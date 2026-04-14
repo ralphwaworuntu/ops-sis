@@ -45,5 +45,12 @@
     "tailwind-merge": "^3.0.0",
     "tailwind-variants": "^1.0.0",
     "tw-animate-css": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "volta": {
+    "node": "24.0.0",
+    "npm": "11.0.0"
   }
 }
