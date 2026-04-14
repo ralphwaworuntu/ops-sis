@@ -3,8 +3,18 @@ node_modules
 build
 dist
 .env
-data/
-uploads/
+
+# Local runtime data (do not commit DBs)
+data/*
+!data/.gitkeep
+!data/README.md
+
+# User uploads (do not commit actual media)
+uploads/*
+!uploads/.gitkeep
+!uploads/README.md
+uploads/laporan/*
+!uploads/laporan/.gitkeep
 .DS_Store
 *.db
 *.db-journal
