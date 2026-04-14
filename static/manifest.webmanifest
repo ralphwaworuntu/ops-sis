@@ -1,0 +1,17 @@
+{
+	"name": "OPS — SIS",
+	"short_name": "OPS-SIS",
+	"description": "Sistem Informasi Strategi Operasional",
+	"start_url": "/dashboard",
+	"display": "standalone",
+	"background_color": "#0f172a",
+	"theme_color": "#1e3a8a",
+	"icons": [
+		{
+			"src": "/favicon.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any"
+		}
+	]
+}
