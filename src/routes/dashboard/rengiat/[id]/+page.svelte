@@ -8,6 +8,7 @@
 	let showRejectForm = $state(false);
 
 	const r = $derived(data.rengiatDetail);
+	const kategoriInfo = $derived.by(() => kategoriBadge(r.kategori));
 
 	const statusLabels: Record<string, string> = {
 		Draft: 'Draf',
@@ -24,6 +25,21 @@
 		Approved: 'bg-emerald-50 text-emerald-800 border-emerald-200',
 		Rejected: 'bg-red-50 text-red-800 border-red-200'
 	};
+
+	function kategoriBadge(kategori: string | null | undefined) {
+		const k = kategori ?? 'Rengiat Harian';
+		if (
+			k === 'Rengiat Pengamanan Objek Vital' ||
+			k === 'Rengiat Pengamanan Tamu VIP' ||
+			k === 'Rengiat Pengamanan Tamu VVIP'
+		) {
+			return { label: k, cls: 'bg-red-50 text-red-800 border-red-200' };
+		}
+		if (k === 'Rengiat Penanganan Zona Merah') {
+			return { label: k, cls: 'bg-orange-50 text-orange-800 border-orange-200' };
+		}
+		return { label: k, cls: 'bg-yellow-50 text-yellow-800 border-yellow-200' };
+	}
 
 	const workflowSteps = [
 		{ key: 'Draft', label: 'Draf' },
@@ -89,6 +105,11 @@
 					<span>oleh {r.createdByNama}</span>
 					<span>&middot;</span>
 					<span>{formatDate(r.createdAt)}</span>
+				</div>
+				<div class="mt-2">
+					<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold {kategoriInfo.cls}">
+						{kategoriInfo.label}
+					</span>
 				</div>
 				<p class="mt-2 text-sm text-foreground">
 					Target plotting: <strong>{r.jumlahRencanaPlotting ?? 0}</strong>

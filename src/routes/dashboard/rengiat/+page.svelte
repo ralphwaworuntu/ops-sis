@@ -21,6 +21,21 @@
 		Rejected: 'bg-red-100 text-red-800'
 	};
 
+	function kategoriBadge(kategori: string | null | undefined) {
+		const k = kategori ?? 'Rengiat Harian';
+		if (
+			k === 'Rengiat Pengamanan Objek Vital' ||
+			k === 'Rengiat Pengamanan Tamu VIP' ||
+			k === 'Rengiat Pengamanan Tamu VVIP'
+		) {
+			return { label: k, cls: 'bg-red-100 text-red-800' };
+		}
+		if (k === 'Rengiat Penanganan Zona Merah') {
+			return { label: k, cls: 'bg-orange-100 text-orange-800' };
+		}
+		return { label: k, cls: 'bg-yellow-100 text-yellow-800' };
+	}
+
 	const filteredList = $derived(
 		filterStatus === 'all'
 			? data.rengiatList
@@ -107,6 +122,7 @@
 	{:else}
 		<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
 			{#each filteredList as item}
+				{@const kb = kategoriBadge(item.kategori)}
 				<a
 					href="/dashboard/rengiat/{item.id}"
 					class="group rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/20 hover:shadow-md"
@@ -116,6 +132,9 @@
 						<span class="shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {statusColors[item.status]}">
 							{statusLabels[item.status]}
 						</span>
+					</div>
+					<div class="mb-2">
+						<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {kb.cls}">{kb.label}</span>
 					</div>
 					<p class="line-clamp-2 text-xs text-muted-foreground">{item.deskripsi}</p>
 					<div class="mt-2 text-[11px] text-muted-foreground">

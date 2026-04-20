@@ -15,6 +15,7 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 	const item = db
 		.select({
 			id: rengiat.id,
+			kategori: rengiat.kategori,
 			judul: rengiat.judul,
 			deskripsi: rengiat.deskripsi,
 			filePath: rengiat.filePath,

@@ -18,6 +18,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	const base = db
 		.select({
 			id: rengiat.id,
+			kategori: rengiat.kategori,
 			judul: rengiat.judul,
 			deskripsi: rengiat.deskripsi,
 			status: rengiat.status,
