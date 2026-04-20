@@ -3,6 +3,32 @@
 
 	let { form } = $props();
 	let loading = $state(false);
+	let fileInput: HTMLInputElement | null = $state(null);
+	let chosenFile: File | null = $state(null);
+	let dragOver = $state(false);
+
+	function syncChosenFromInput() {
+		const f = fileInput?.files?.[0] ?? null;
+		chosenFile = f;
+	}
+
+	function onDrop(e: DragEvent) {
+		e.preventDefault();
+		dragOver = false;
+		const f = e.dataTransfer?.files?.[0];
+		if (!f) return;
+		chosenFile = f;
+		// Best-effort: assign dropped file to input so it submits normally.
+		if (fileInput) {
+			try {
+				const dt = new DataTransfer();
+				dt.items.add(f);
+				fileInput.files = dt.files;
+			} catch {
+				// If browser blocks, user can click to pick file instead.
+			}
+		}
+	}
 </script>
 
 <svelte:head>
@@ -67,13 +93,68 @@
 
 			<div class="space-y-2">
 				<label for="rengiat_file" class="text-sm font-medium text-foreground">Upload dokumen Rengiat (opsional)</label>
-				<input
-					id="rengiat_file"
-					name="rengiat_file"
-					type="file"
-					accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-					class="flex h-11 w-full items-center rounded-lg border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium"
-				/>
+				<div
+					class="group relative flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition-colors {dragOver
+						? 'border-primary bg-primary/5'
+						: 'border-border bg-muted/20 hover:bg-muted/30'}"
+					role="button"
+					tabindex="0"
+					aria-label="Upload dokumen rengiat (tarik & lepas atau klik)"
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							fileInput?.click();
+						}
+					}}
+					ondragenter={(e) => {
+						e.preventDefault();
+						dragOver = true;
+					}}
+					ondragover={(e) => {
+						e.preventDefault();
+						dragOver = true;
+					}}
+					ondragleave={(e) => {
+						e.preventDefault();
+						dragOver = false;
+					}}
+					ondrop={onDrop}
+				>
+					<input
+						bind:this={fileInput}
+						id="rengiat_file"
+						name="rengiat_file"
+						type="file"
+						accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+						class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+						onchange={syncChosenFromInput}
+					/>
+
+					<div
+						class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors group-hover:text-foreground {dragOver
+							? 'border-primary text-primary'
+							: ''}"
+						aria-hidden="true"
+					>
+						<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M12 16V8m0 0l3 3m-3-3l-3 3M20 16.5a4.5 4.5 0 00-3.3-4.34 6 6 0 10-11.4 2.02A4 4 0 006 22h11a3 3 0 003-3v-2.5z"
+							/>
+						</svg>
+					</div>
+
+					<p class="text-sm font-medium text-foreground">Tarik &amp; lepas file di sini</p>
+					<p class="text-xs text-muted-foreground">
+						atau klik untuk memilih (PDF, DOC, DOCX · maks 100MB)
+					</p>
+					{#if chosenFile}
+						<p class="mt-1 text-xs font-medium text-foreground">
+							File dipilih: <span class="font-mono">{chosenFile.name}</span>
+						</p>
+					{/if}
+				</div>
 				<p class="text-xs text-muted-foreground">
 					Maksimal 100MB. Format: PDF, DOC, DOCX.
 				</p>
