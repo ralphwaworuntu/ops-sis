@@ -67,6 +67,22 @@
 			{/if}
 
 			<div class="space-y-2">
+				<label for="kategori" class="text-sm font-medium text-foreground">Kategori Rengiat</label>
+				<select
+					id="kategori"
+					name="kategori"
+					required
+					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+				>
+					<option value="Rengiat Harian">Rengiat Harian</option>
+					<option value="Rengiat Penanganan Zona Merah">Rengiat Penanganan Zona Merah</option>
+					<option value="Rengiat Pengamanan Objek Vital">Rengiat Pengamanan Objek Vital</option>
+					<option value="Rengiat Pengamanan Tamu VIP">Rengiat Pengamanan Tamu VIP</option>
+					<option value="Rengiat Pengamanan Tamu VVIP">Rengiat Pengamanan Tamu VVIP</option>
+				</select>
+			</div>
+
+			<div class="space-y-2">
 				<label for="judul" class="text-sm font-medium text-foreground">Judul Rengiat</label>
 				<input
 					id="judul"

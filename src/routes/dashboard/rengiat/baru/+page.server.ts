@@ -18,6 +18,20 @@ export const actions: Actions = {
 		}
 
 		const data = await request.formData();
+		const KATEGORI_OPTIONS = [
+			'Rengiat Harian',
+			'Rengiat Penanganan Zona Merah',
+			'Rengiat Pengamanan Objek Vital',
+			'Rengiat Pengamanan Tamu VIP',
+			'Rengiat Pengamanan Tamu VVIP'
+		] as const;
+		type Kategori = (typeof KATEGORI_OPTIONS)[number];
+
+		const kategoriRaw = data.get('kategori')?.toString()?.trim() ?? '';
+		const kategori: Kategori =
+			(KATEGORI_OPTIONS as readonly string[]).includes(kategoriRaw) && (kategoriRaw as Kategori)
+				? (kategoriRaw as Kategori)
+				: 'Rengiat Harian';
 		const judul = data.get('judul')?.toString()?.trim() ?? '';
 		const deskripsi = data.get('deskripsi')?.toString()?.trim() ?? '';
 		const rengiatFile = data.get('rengiat_file');
@@ -57,6 +71,7 @@ export const actions: Actions = {
 		const result = db
 			.insert(rengiat)
 			.values({
+				kategori,
 				judul,
 				deskripsi,
 				filePath,

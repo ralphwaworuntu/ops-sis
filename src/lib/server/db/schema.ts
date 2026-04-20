@@ -60,6 +60,17 @@ export const vulnerabilityPoints = sqliteTable('vulnerability_points', {
 
 export const rengiat = sqliteTable('rengiat', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
+	kategori: text('kategori', {
+		enum: [
+			'Rengiat Harian',
+			'Rengiat Penanganan Zona Merah',
+			'Rengiat Pengamanan Objek Vital',
+			'Rengiat Pengamanan Tamu VIP',
+			'Rengiat Pengamanan Tamu VVIP'
+		]
+	})
+		.notNull()
+		.default('Rengiat Harian'),
 	judul: text('judul').notNull(),
 	deskripsi: text('deskripsi').notNull(),
 	filePath: text('file_path'),
