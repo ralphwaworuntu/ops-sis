@@ -24,6 +24,7 @@
 	<div class="rounded-xl border border-border bg-card p-5 shadow-sm md:p-6">
 		<form
 			method="POST"
+			enctype="multipart/form-data"
 			use:enhance={() => {
 				loading = true;
 				return async ({ update }) => {
@@ -62,6 +63,20 @@
 					class="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 					placeholder="Jelaskan rencana kegiatan secara detail: tujuan, metode, personil, jadwal..."
 				></textarea>
+			</div>
+
+			<div class="space-y-2">
+				<label for="rengiat_file" class="text-sm font-medium text-foreground">Upload dokumen Rengiat (opsional)</label>
+				<input
+					id="rengiat_file"
+					name="rengiat_file"
+					type="file"
+					accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+					class="flex h-11 w-full items-center rounded-lg border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium"
+				/>
+				<p class="text-xs text-muted-foreground">
+					Maksimal 100MB. Format: PDF, DOC, DOCX.
+				</p>
 			</div>
 
 			<div class="space-y-2">

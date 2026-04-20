@@ -17,6 +17,7 @@ export function runSqliteMigrations(sqlite: Database.Database) {
 		'ALTER TABLE users ADD COLUMN nrp TEXT NOT NULL DEFAULT \'\'',
 		'ALTER TABLE vulnerability_points ADD COLUMN origin TEXT NOT NULL DEFAULT \'polres\'',
 		'ALTER TABLE vulnerability_points ADD COLUMN polsek_unit_id INTEGER REFERENCES units(id)',
+		'ALTER TABLE rengiat ADD COLUMN file_path TEXT',
 		'ALTER TABLE rengiat ADD COLUMN operasi_selesai TEXT',
 		"ALTER TABLE activity_reports ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'awaiting_polres'",
 		'ALTER TABLE activity_reports ADD COLUMN returned_note TEXT',

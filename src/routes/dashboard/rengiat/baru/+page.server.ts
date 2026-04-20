@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { rengiat } from '$lib/server/db/schema';
+import { saveFile } from '$lib/server/storage';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { user } = await parent();
@@ -19,6 +20,7 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const judul = data.get('judul')?.toString()?.trim() ?? '';
 		const deskripsi = data.get('deskripsi')?.toString()?.trim() ?? '';
+		const rengiatFile = data.get('rengiat_file');
 		const jumlahRencanaPlotting = parseInt(data.get('jumlah_rencana_plotting')?.toString() ?? '0', 10);
 		const alat = parseFloat(data.get('anchor_lat')?.toString() ?? '');
 		const alng = parseFloat(data.get('anchor_lng')?.toString() ?? '');
@@ -33,11 +35,31 @@ export const actions: Actions = {
 			return fail(400, { error: 'Judul dan deskripsi wajib diisi.' });
 		}
 
+		let filePath: string | null = null;
+		if (rengiatFile instanceof File && rengiatFile.size > 0) {
+			const maxBytes = 100 * 1024 * 1024;
+			if (rengiatFile.size > maxBytes) {
+				return fail(400, { error: 'Ukuran file maksimal 100MB.' });
+			}
+			const name = rengiatFile.name.toLowerCase();
+			const okByExt = name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx');
+			const okByMime =
+				rengiatFile.type === 'application/pdf' ||
+				rengiatFile.type === 'application/msword' ||
+				rengiatFile.type ===
+					'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+			if (!okByExt && !okByMime) {
+				return fail(400, { error: 'Format file harus PDF, DOC, atau DOCX.' });
+			}
+			filePath = await saveFile(rengiatFile, 'rengiat');
+		}
+
 		const result = db
 			.insert(rengiat)
 			.values({
 				judul,
 				deskripsi,
+				filePath,
 				status: 'Draft',
 				jumlahRencanaPlotting: isNaN(jumlahRencanaPlotting) ? 0 : Math.max(0, jumlahRencanaPlotting),
 				anchorLat: isNaN(alat) ? null : alat,
