@@ -96,7 +96,10 @@ export const load: PageServerLoad = async ({ parent }) => {
 				? {
 						note: latest.returnedNote ?? '',
 						at: latest.createdAt,
-						reportId: latest.id
+						reportId: latest.id,
+						deskripsi: latest.deskripsi,
+						jumlahTerploting: latest.jumlahTerploting ?? 0,
+						isBuktiLapangan: Boolean(latest.isBuktiLapangan)
 					}
 				: null;
 		return {

@@ -41,6 +41,8 @@ export async function submitPolsekActivityReport(
 	const lngStr = formData.get('lng')?.toString()?.trim() ?? '';
 	const lat = latStr === '' ? null : parseFloat(latStr);
 	const lng = lngStr === '' ? null : parseFloat(lngStr);
+	const editReportIdRaw = formData.get('edit_report_id')?.toString()?.trim() ?? '';
+	const editReportId = editReportIdRaw ? parseInt(editReportIdRaw, 10) : null;
 	const isBuktiLapangan =
 		formData.get('bukti_lapangan') === 'on' || formData.get('bukti_lapangan') === 'true';
 
@@ -113,30 +115,70 @@ export async function submitPolsekActivityReport(
 		}
 	}
 
-	const insertedRows = db
-		.insert(activityReports)
-		.values({
-			rengiatId,
-			userId: locals.user.id,
-			deskripsi,
-			fotoPath,
-			lat: lat != null && !isNaN(lat) ? lat : null,
-			lng: lng != null && !isNaN(lng) ? lng : null,
-			jumlahTerploting: isNaN(jumlahTerploting) ? 0 : Math.max(0, jumlahTerploting),
-			isBuktiLapangan,
-			diLuarRadius,
-			distanceMeters: dist,
-			verificationStatus: 'awaiting_polres',
-			createdAt: reportCreatedAt
-		})
-		.returning({ id: activityReports.id })
-		.all();
-	const inserted = insertedRows[0];
+	let reportId: number | null = null;
+	let action: 'LHP_SUBMIT' | 'LHP_RESUBMIT' = 'LHP_SUBMIT';
+
+	if (editReportId != null && !isNaN(editReportId)) {
+		const old = db
+			.select()
+			.from(activityReports)
+			.where(eq(activityReports.id, editReportId))
+			.get();
+		if (
+			!old ||
+			old.userId !== locals.user.id ||
+			old.rengiatId !== rengiatId ||
+			old.verificationStatus !== 'returned'
+		) {
+			return fail(400, { error: 'Laporan yang diperbaiki tidak valid atau tidak dapat diubah.' });
+		}
+		// Jika user tidak upload foto baru, pertahankan foto lama.
+		const nextFotoPath = fotoPath ?? old.fotoPath ?? null;
+
+		db.update(activityReports)
+			.set({
+				deskripsi,
+				fotoPath: nextFotoPath,
+				lat: lat != null && !isNaN(lat) ? lat : null,
+				lng: lng != null && !isNaN(lng) ? lng : null,
+				jumlahTerploting: isNaN(jumlahTerploting) ? 0 : Math.max(0, jumlahTerploting),
+				isBuktiLapangan,
+				diLuarRadius,
+				distanceMeters: dist,
+				verificationStatus: 'awaiting_polres',
+				returnedNote: null,
+				createdAt: reportCreatedAt
+			})
+			.where(eq(activityReports.id, editReportId))
+			.run();
+		reportId = editReportId;
+		action = 'LHP_RESUBMIT';
+	} else {
+		const insertedRows = db
+			.insert(activityReports)
+			.values({
+				rengiatId,
+				userId: locals.user.id,
+				deskripsi,
+				fotoPath,
+				lat: lat != null && !isNaN(lat) ? lat : null,
+				lng: lng != null && !isNaN(lng) ? lng : null,
+				jumlahTerploting: isNaN(jumlahTerploting) ? 0 : Math.max(0, jumlahTerploting),
+				isBuktiLapangan,
+				diLuarRadius,
+				distanceMeters: dist,
+				verificationStatus: 'awaiting_polres',
+				createdAt: reportCreatedAt
+			})
+			.returning({ id: activityReports.id })
+			.all();
+		reportId = insertedRows[0]?.id ?? null;
+	}
 
 	auditFromRequest(locals.user.id, event.request, event.getClientAddress, {
-		action: 'LHP_SUBMIT',
+		action,
 		entityType: 'activity_report',
-		entityId: inserted?.id ?? null,
+		entityId: reportId,
 		detail: {
 			rengiatId,
 			diLuarRadius,
@@ -152,10 +194,10 @@ export async function submitPolsekActivityReport(
 		...(hasEndCoords ? { endLat: lat, endLng: lng } : {})
 	});
 
-	if (inserted) {
+	if (reportId != null) {
 		const polRow = db.select({ nama: units.nama }).from(units).where(eq(units.id, rg.polresId)).get();
 		const base = {
-			id: inserted.id,
+			id: reportId,
 			rengiatId,
 			diLuarRadius,
 			distanceMeters: dist,

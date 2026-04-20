@@ -15,6 +15,7 @@
 	let localNotice = $state('');
 	let outboxRows = $state<QueuedLhp[]>([]);
 	let lhpForm: HTMLFormElement | undefined = $state();
+	let editReportId = $state<number | null>(null);
 
 	onMount(() => {
 		void refreshOutbox();
@@ -163,6 +164,27 @@
 		return data.activeFieldSessions.find((x) => x.rengiatId === rgId);
 	}
 
+	function prefillFromReturned(rengiatId: number) {
+		const s = ringkas(rengiatId);
+		const r = s?.lastReturned;
+		if (!r) return;
+		editReportId = r.reportId;
+		openFormFor = rengiatId;
+		// Wait the form to mount.
+		setTimeout(() => {
+			if (!lhpForm) return;
+			const d = lhpForm.elements.namedItem('deskripsi') as HTMLTextAreaElement | null;
+			const j = lhpForm.elements.namedItem('jumlah_terploting') as HTMLInputElement | null;
+			const b = lhpForm.elements.namedItem('bukti_lapangan') as HTMLInputElement | null;
+			const hid = lhpForm.elements.namedItem('edit_report_id') as HTMLInputElement | null;
+			if (hid) hid.value = String(r.reportId);
+			if (d) d.value = r.deskripsi ?? '';
+			if (j) j.value = String(r.jumlahTerploting ?? 0);
+			if (b) b.checked = Boolean(r.isBuktiLapangan);
+			d?.focus();
+		}, 0);
+	}
+
 	async function onFotoChange(e: Event) {
 		const input = e.currentTarget as HTMLInputElement;
 		const f = input.files?.[0];
@@ -293,25 +315,25 @@
 						</p>
 
 						{#if s?.lastReturned}
-							<div
-								class="rounded-lg border border-rose-300/90 bg-rose-50 px-3 py-2.5 text-xs text-rose-950 shadow-sm"
-								role="status"
-							>
-								<p class="font-semibold text-rose-950">LHP dikembalikan — perbaiki &amp; kirim ulang</p>
+							<div class="rounded-lg border border-rose-300/90 bg-rose-50 px-3 py-2.5 text-xs text-rose-950 shadow-sm">
+								<div class="flex flex-wrap items-center justify-between gap-2">
+									<p class="font-semibold text-rose-950">Feedback Kabag Ops</p>
+									<span class="inline-flex rounded-full bg-rose-700 px-2 py-0.5 text-[10px] font-bold text-white">
+										Perlu Perbaikan
+									</span>
+								</div>
 								<p class="mt-1.5 whitespace-pre-wrap text-rose-900/95">
 									{s.lastReturned.note?.trim()
 										? s.lastReturned.note
 										: 'Tidak ada catatan detail; hubungi Kabag Ops jika perlu klarifikasi.'}
 								</p>
-								<p class="mt-1 text-[10px] text-rose-800/85">
-									Dikembalikan: {formatDate(s.lastReturned.at)}
-								</p>
+								<p class="mt-1 text-[10px] text-rose-800/85">Dikembalikan: {formatDate(s.lastReturned.at)}</p>
 								<button
 									type="button"
-									onclick={() => (openFormFor = rg.id)}
+									onclick={() => prefillFromReturned(rg.id)}
 									class="mt-2 w-full rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-800 sm:w-auto"
 								>
-									Buka form LHP untuk kirim ulang
+									Perbaiki Laporan
 								</button>
 							</div>
 						{:else if s?.latestVerificationStatus === 'awaiting_polres' && (s.count ?? 0) > 0}
@@ -434,6 +456,7 @@
 							<input type="hidden" name="captured_at_iso" value="" />
 							<input type="hidden" name="lat" value="" />
 							<input type="hidden" name="lng" value="" />
+							<input type="hidden" name="edit_report_id" value={editReportId ?? ''} />
 
 							<div>
 								<label class="text-xs font-medium text-foreground" for="d-{rg.id}">Deskripsi</label>
