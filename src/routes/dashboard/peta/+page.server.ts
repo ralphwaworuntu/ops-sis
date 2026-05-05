@@ -13,6 +13,7 @@ const pointSelect = {
 	jenisKejahatan: vulnerabilityPoints.jenisKejahatan,
 	frekuensi: vulnerabilityPoints.frekuensi,
 	keterangan: vulnerabilityPoints.keterangan,
+	radiusM: vulnerabilityPoints.radiusM,
 	origin: vulnerabilityPoints.origin,
 	polsekUnitId: vulnerabilityPoints.polsekUnitId,
 	polresNama: units.nama,
@@ -168,26 +169,51 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const lat = parseFloat(data.get('lat')?.toString() ?? '');
 		const lng = parseFloat(data.get('lng')?.toString() ?? '');
-		const jenisKejahatan = data.get('jenis_kejahatan')?.toString() ?? '';
-		const frekuensi = parseInt(data.get('frekuensi')?.toString() ?? '1');
-		const keterangan = data.get('keterangan')?.toString() ?? '';
+		const radiusM = parseInt(data.get('radius_m')?.toString() ?? '500', 10);
+		const jumlahJenis = parseInt(data.get('jumlah_jenis')?.toString() ?? '1', 10);
 
-		if (isNaN(lat) || isNaN(lng) || !jenisKejahatan) {
-			return fail(400, { error: 'Koordinat dan jenis kejahatan wajib diisi.' });
+		if (isNaN(lat) || isNaN(lng)) {
+			return fail(400, { error: 'Koordinat wajib diisi.' });
 		}
 
-		db.insert(vulnerabilityPoints)
-			.values({
+		const n = Number.isFinite(jumlahJenis) ? Math.min(10, Math.max(1, jumlahJenis)) : 1;
+		const rM = Number.isFinite(radiusM) ? Math.min(5000, Math.max(50, radiusM)) : 500;
+
+		const inserts: (typeof vulnerabilityPoints.$inferInsert)[] = [];
+		for (let i = 1; i <= n; i++) {
+			const jenis = data.get(`jenis_kejahatan_${i}`)?.toString()?.trim() ?? '';
+			const frek = parseInt(data.get(`frekuensi_${i}`)?.toString() ?? '1', 10);
+			const ket = data.get(`keterangan_${i}`)?.toString()?.trim() ?? '';
+
+			if (!jenis) continue; // section kosong → skip
+
+			let finalJenis = jenis;
+			if (jenis === 'Lainnya') {
+				const other = data.get(`jenis_kejahatan_lainnya_${i}`)?.toString()?.trim() ?? '';
+				if (!other) {
+					return fail(400, { error: `Jenis kejahatan (Lainnya) wajib diisi pada section #${i}.` });
+				}
+				finalJenis = other;
+			}
+
+			inserts.push({
 				lat,
 				lng,
-				jenisKejahatan,
-				frekuensi: isNaN(frekuensi) ? 1 : frekuensi,
-				keterangan: keterangan || null,
+				jenisKejahatan: finalJenis,
+				frekuensi: isNaN(frek) ? 1 : Math.max(1, frek),
+				keterangan: ket || null,
+				radiusM: rM,
 				origin: 'polres',
 				polresId: locals.user.unitId!,
 				createdBy: locals.user.id
-			})
-			.run();
+			});
+		}
+
+		if (inserts.length === 0) {
+			return fail(400, { error: 'Minimal 1 jenis kejahatan harus diisi.' });
+		}
+
+		db.insert(vulnerabilityPoints).values(inserts).run();
 
 		return { success: true };
 	},

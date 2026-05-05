@@ -5,8 +5,10 @@
 	let { data } = $props();
 
 	type Recent = (typeof data.recent)[number];
+	type Incident = (typeof data.incidents)[number];
 
 	let stream = $state<Recent[]>([]);
+	let incidentStream = $state<Incident[]>([]);
 	let staleAlerts = $state<
 		{
 			sessionId: number;
@@ -32,10 +34,15 @@
 		map: import('leaflet').Map | null;
 		layer: import('leaflet').LayerGroup | null;
 		staleLayer: import('leaflet').LayerGroup | null;
-	} = { L: null, map: null, layer: null, staleLayer: null };
+		incidentLayer: import('leaflet').LayerGroup | null;
+	} = { L: null, map: null, layer: null, staleLayer: null, incidentLayer: null };
 
 	$effect(() => {
 		stream = [...data.recent];
+	});
+
+	$effect(() => {
+		incidentStream = [...data.incidents];
 	});
 
 	const chartMax = $derived(
@@ -114,11 +121,44 @@
 		}
 	}
 
+	function redrawIncidentMarkers(list: Incident[]) {
+		const { L, map, incidentLayer } = mapCtx;
+		if (!L || !map || !incidentLayer) return;
+		incidentLayer.clearLayers();
+		for (const r of list) {
+			if (r.lat == null || r.lng == null) continue;
+			const el = document.createElement('div');
+			el.className = 'incident-wall';
+			el.innerHTML = `
+				<div class=\"incident-wall__tri\">
+					<svg viewBox=\"0 0 24 24\" class=\"incident-wall__icon\" aria-hidden=\"true\">
+						<path d=\"M12 2 1 21h22L12 2z\" fill=\"currentColor\"></path>
+						<path d=\"M12 8v6\" stroke=\"#0f172a\" stroke-width=\"2\" stroke-linecap=\"round\"/>
+						<circle cx=\"12\" cy=\"17\" r=\"1.4\" fill=\"#0f172a\"/>
+					</svg>
+				</div>
+			`;
+			const icon = L.divIcon({
+				html: el,
+				className: 'lhp-wall-icon',
+				iconSize: [34, 34],
+				iconAnchor: [17, 17]
+			});
+			L.marker([r.lat, r.lng], { icon }).addTo(incidentLayer);
+		}
+	}
+
 	$effect(() => {
 		if (!browser || !mapReady) return;
 		void stream;
 		void pulseId;
 		redrawMarkers(stream, pulseId);
+	});
+
+	$effect(() => {
+		if (!browser || !mapReady) return;
+		void incidentStream;
+		redrawIncidentMarkers(incidentStream);
 	});
 
 	$effect(() => {
@@ -136,13 +176,15 @@
 		void import('leaflet').then((L) => {
 			if (destroyed || !mapHost) return;
 			mapCtx.L = L;
-			mapCtx.map = L.map(mapHost).setView([-6.2, 106.85], 10);
+			// Default view: Provinsi Nusa Tenggara Timur (NTT)
+			mapCtx.map = L.map(mapHost).setView([-9.6, 123.9], 7);
 			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 				attribution: '&copy; OpenStreetMap',
 				maxZoom: 19
 			}).addTo(mapCtx.map);
 			mapCtx.layer = L.layerGroup().addTo(mapCtx.map);
 			mapCtx.staleLayer = L.layerGroup().addTo(mapCtx.map);
+			mapCtx.incidentLayer = L.layerGroup().addTo(mapCtx.map);
 			mapReady = true;
 		});
 
@@ -150,6 +192,35 @@
 		es.onmessage = (event) => {
 			try {
 				const payload = JSON.parse(event.data);
+				if (payload.type === 'notable_incident') {
+					const d = payload.data as {
+						id?: number;
+						jenis?: string;
+						deskripsi?: string;
+						fotoPath?: string | null;
+						lat?: number;
+						lng?: number;
+						createdAt?: string;
+						polresId?: number;
+						polresNama?: string;
+						userNama?: string;
+					};
+					if (d.polresId == null || !data.scopedPolresIds.includes(d.polresId)) return;
+					const row: Incident = {
+						id: d.id ?? -1,
+						jenis: d.jenis ?? 'Lainnya',
+						deskripsi: d.deskripsi ?? '',
+						fotoPath: d.fotoPath ?? null,
+						lat: d.lat ?? null,
+						lng: d.lng ?? null,
+						createdAt: d.createdAt ?? new Date().toISOString(),
+						polresId: d.polresId,
+						polresNama: d.polresNama ?? '',
+						userNama: d.userNama ?? '—'
+					} as Incident;
+					incidentStream = [row, ...incidentStream.filter((x) => x.id !== row.id)].slice(0, 160);
+					return;
+				}
 				if (payload.type === 'heartbeat_stale') {
 					const d = payload.data as {
 						sessionId: number;
@@ -193,6 +264,8 @@
 					distanceMeters?: number | null;
 					deskripsi?: string;
 					judul?: string;
+					kategori?: string;
+					urgency?: string;
 					polresNama?: string;
 					userNama?: string;
 					createdAt?: string;
@@ -204,6 +277,8 @@
 					lng: d.lng ?? null,
 					deskripsi: d.deskripsi ?? '',
 					judul: d.judul ?? '—',
+					kategori: (d.kategori ?? 'Rengiat Harian') as Recent['kategori'],
+					urgency: (d.urgency ?? 'NORMAL') as Recent['urgency'],
 					userNama: d.userNama ?? '—',
 					diLuarRadius: Boolean(d.diLuarRadius),
 					distanceMeters: d.distanceMeters ?? null,
@@ -229,6 +304,7 @@
 			mapCtx.map = null;
 			mapCtx.layer = null;
 			mapCtx.staleLayer = null;
+			mapCtx.incidentLayer = null;
 			mapCtx.L = null;
 			mapReady = false;
 		};
@@ -241,6 +317,22 @@
 			hour: '2-digit',
 			minute: '2-digit'
 		});
+	}
+
+	function katShortLabel(k: string | null | undefined): string | null {
+		if (!k || k === 'Rengiat Harian') return null;
+		if (k === 'Rengiat Pengamanan Tamu VVIP') return 'VVIP';
+		if (k === 'Rengiat Pengamanan Tamu VIP') return 'VIP';
+		if (k === 'Rengiat Penanganan Zona Merah') return 'Zona Merah';
+		if (k === 'Rengiat Pengamanan Objek Vital') return 'Objek Vital';
+		return k.replace('Rengiat ', '');
+	}
+
+	function katBadgeCls(k: string | null | undefined): string {
+		if (k === 'Rengiat Pengamanan Tamu VVIP') return 'lw-kat-vvip';
+		if (k === 'Rengiat Pengamanan Tamu VIP' || k === 'Rengiat Pengamanan Objek Vital') return 'lw-kat-red';
+		if (k === 'Rengiat Penanganan Zona Merah') return 'lw-kat-zona-merah';
+		return '';
 	}
 </script>
 
@@ -365,9 +457,10 @@
 								<span class="font-mono text-sky-300/90">#{item.id}</span>
 								<span>{formatTime(item.createdAt)}</span>
 								{#if item.diLuarRadius}
-									<span class="rounded bg-rose-500/20 px-1.5 py-0.5 font-semibold text-rose-300"
-										>Di luar radius</span
-									>
+									<span class="rounded bg-rose-500/20 px-1.5 py-0.5 font-semibold text-rose-300">Di luar radius</span>
+								{/if}
+								{#if katShortLabel(item.kategori)}
+									<span class="rounded px-1.5 py-0.5 font-semibold {katBadgeCls(item.kategori)}">{katShortLabel(item.kategori)}</span>
 								{/if}
 							</div>
 							<p class="mt-0.5 text-sm font-medium text-white">{item.judul}</p>
@@ -391,6 +484,38 @@
 		background: transparent !important;
 		border: none !important;
 	}
+	:global(.incident-wall) {
+		width: 34px;
+		height: 34px;
+		display: grid;
+		place-items: center;
+	}
+	:global(.incident-wall__tri) {
+		width: 28px;
+		height: 28px;
+		color: #f43f5e; /* rose-500 */
+		filter: drop-shadow(0 0 6px rgba(244, 63, 94, 0.55));
+		transform-origin: center;
+		animation: incident-pulse-fast 0.65s ease-in-out infinite;
+	}
+	:global(.incident-wall__icon) {
+		width: 28px;
+		height: 28px;
+	}
+	@keyframes incident-pulse-fast {
+		0% {
+			transform: scale(1);
+			opacity: 0.95;
+		}
+		45% {
+			transform: scale(1.35);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(1);
+			opacity: 0.92;
+		}
+	}
 	:global(.lhp-wall-dot) {
 		width: 14px;
 		height: 14px;
@@ -406,6 +531,23 @@
 	:global(.lhp-wall-dot--stale) {
 		background: #f59e0b;
 		box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.45);
+	}
+	:global(.lw-kat-vvip) {
+		background: linear-gradient(135deg, #92400e, #b45309);
+		color: #fde68a;
+	}
+	:global(.lw-kat-red) {
+		background: rgba(239, 68, 68, 0.25);
+		color: #fca5a5;
+	}
+	:global(.lw-kat-zona-merah) {
+		background: rgba(239, 68, 68, 0.25);
+		color: #fca5a5;
+		animation: lw-badge-pulse 2s ease-in-out infinite;
+	}
+	@keyframes lw-badge-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.5; }
 	}
 	:global(.lhp-wall-dot--pulse) {
 		animation: lhp-wall-pulse 1s ease-out 2;

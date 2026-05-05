@@ -46,6 +46,8 @@ sqlite.exec(`
     jenis_kejahatan TEXT NOT NULL,
     frekuensi INTEGER NOT NULL DEFAULT 1,
     keterangan TEXT,
+    origin TEXT NOT NULL DEFAULT 'polres',
+    polsek_unit_id INTEGER REFERENCES units(id),
     polres_id INTEGER NOT NULL REFERENCES units(id),
     created_by INTEGER NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -53,6 +55,7 @@ sqlite.exec(`
   );
   CREATE TABLE IF NOT EXISTS rengiat (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kategori TEXT NOT NULL DEFAULT 'Rengiat Harian',
     judul TEXT NOT NULL,
     deskripsi TEXT NOT NULL,
     file_path TEXT,
@@ -60,6 +63,17 @@ sqlite.exec(`
     ai_analysis TEXT,
     final_plan TEXT,
     rejection_note TEXT,
+    jumlah_rencana_plotting INTEGER NOT NULL DEFAULT 0,
+    anchor_lat REAL,
+    anchor_lng REAL,
+    requires_polda_approval INTEGER NOT NULL DEFAULT 0,
+    urgency TEXT NOT NULL DEFAULT 'NORMAL',
+    target_point_id INTEGER REFERENCES vulnerability_points(id),
+    instansi_terkait TEXT,
+    nama_tamu TEXT,
+    tingkat_kerawanan TEXT,
+    analisa_singkat_ancaman TEXT,
+    operasi_selesai TEXT,
     polres_id INTEGER NOT NULL REFERENCES units(id),
     created_by INTEGER NOT NULL REFERENCES users(id),
     reviewed_by INTEGER REFERENCES users(id),
@@ -183,6 +197,26 @@ db.insert(schema.vulnerabilityPoints)
 			keterangan: 'Area sekolah daerah Matraman',
 			polresId: 3,
 			createdBy: 4
+		},
+		{
+			lat: -6.235,
+			lng: 106.79,
+			jenisKejahatan: 'Zona Merah POLDA',
+			frekuensi: 10,
+			keterangan: 'Titik rawan level POLDA - Senayan',
+			origin: 'polda',
+			polresId: 2,
+			createdBy: 2
+		},
+		{
+			lat: -6.22,
+			lng: 106.865,
+			jenisKejahatan: 'Zona Merah POLDA',
+			frekuensi: 8,
+			keterangan: 'Titik rawan level POLDA - Tebet/Casablanca',
+			origin: 'polda',
+			polresId: 3,
+			createdBy: 2
 		}
 	])
 	.run();

@@ -27,6 +27,13 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 			anchorLat: rengiat.anchorLat,
 			anchorLng: rengiat.anchorLng,
 			operasiSelesai: rengiat.operasiSelesai,
+			requiresPoldaApproval: rengiat.requiresPoldaApproval,
+			urgency: rengiat.urgency,
+			targetPointId: rengiat.targetPointId,
+			instansiTerkait: rengiat.instansiTerkait,
+			namaTamu: rengiat.namaTamu,
+			tingkatKerawanan: rengiat.tingkatKerawanan,
+			analisaSingkatAncaman: rengiat.analisaSingkatAncaman,
 			polresId: rengiat.polresId,
 			createdBy: rengiat.createdBy,
 			polresNama: units.nama,
@@ -91,22 +98,58 @@ export const actions: Actions = {
 		if (!locals.user || locals.user.role !== 'POLRES') return fail(403, { error: 'Unauthorized' });
 		const id = parseInt(params.id);
 		const row = db.select().from(rengiat).where(eq(rengiat.id, id)).get();
+		if (!row) return fail(404, { error: 'Rengiat tidak ditemukan.' });
+
+		const kat = row.kategori ?? 'Rengiat Harian';
+		const isVipVvip =
+			kat === 'Rengiat Pengamanan Tamu VIP' || kat === 'Rengiat Pengamanan Tamu VVIP';
+		const isZonaMerah = kat === 'Rengiat Penanganan Zona Merah';
+		const isObjekVital = kat === 'Rengiat Pengamanan Objek Vital';
+
+		if ((isZonaMerah || isObjekVital) && !row.targetPointId) {
+			return fail(400, {
+				error: 'Lokasi/Target titik rawan wajib dipilih untuk kategori Zona Merah / Objek Vital.'
+			});
+		}
+
+		if (isVipVvip && !row.namaTamu) {
+			return fail(400, {
+				error: 'Nama tamu wajib diisi untuk kategori VIP/VVIP.'
+			});
+		}
+
+		if (kat === 'Rengiat Pengamanan Tamu VVIP' && (row.jumlahRencanaPlotting ?? 0) < 10) {
+			return fail(400, {
+				error: 'Giat VVIP wajib menyertakan minimal 10 personil (jumlah rencana plotting).'
+			});
+		}
+
+		const requiresPoldaApproval = isVipVvip;
+		const urgency = (isVipVvip || isZonaMerah) ? 'HIGH' as const : 'NORMAL' as const;
+
 		db.update(rengiat)
-			.set({ status: 'PendingReview', updatedAt: new Date().toISOString() })
+			.set({
+				status: 'PendingReview',
+				requiresPoldaApproval,
+				urgency,
+				updatedAt: new Date().toISOString()
+			})
 			.where(eq(rengiat.id, id))
 			.run();
 		auditFromRequest(locals.user.id, request, getClientAddress, {
 			action: 'RENGIAT_SUBMIT_REVIEW',
 			entityType: 'rengiat',
 			entityId: id,
-			detail: { status: 'PendingReview' }
+			detail: { status: 'PendingReview', requiresPoldaApproval, urgency }
 		});
 		sseBroadcaster.emit({
 			type: 'rengiat_update',
 			data: {
 				id,
 				status: 'PendingReview',
-				message: 'Rengiat baru masuk — mohon ditinjau di Review Rengiat.',
+				message: requiresPoldaApproval
+					? `Rengiat ${kat} masuk — memerlukan review prioritas POLDA.`
+					: 'Rengiat baru masuk — mohon ditinjau di Review Rengiat.',
 				notifyRoles: ['POLDA'],
 				polresId: row?.polresId
 			}

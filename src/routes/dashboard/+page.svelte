@@ -1,10 +1,46 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { enhance } from '$app/forms';
 	import { activityFeed, type FeedItem } from '$lib/stores/activity-feed';
 	import PolsekMiniMap from '$lib/components/PolsekMiniMap.svelte';
 	import { lhpOutboxCount } from '$lib/stores/lhp-outbox-status';
 
-	let { data } = $props();
+	let { data, form } = $props();
+
+	let showNotableModal = $state(false);
+	let gpsStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+	let gpsLat = $state<number | null>(null);
+	let gpsLng = $state<number | null>(null);
+	let gpsAcc = $state<number | null>(null);
+	let gpsError = $state<string>('');
+	let submittingNotable = $state(false);
+
+	const canReportNotable = $derived(
+		data.user?.role === 'POLSEK' || data.user?.role === 'POLRES'
+	);
+
+	function startGpsFetch() {
+		if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+			gpsStatus = 'error';
+			gpsError = 'Geolocation tidak didukung di perangkat ini.';
+			return;
+		}
+		gpsStatus = 'loading';
+		gpsError = '';
+		navigator.geolocation.getCurrentPosition(
+			(pos) => {
+				gpsLat = pos.coords.latitude;
+				gpsLng = pos.coords.longitude;
+				gpsAcc = pos.coords.accuracy ?? null;
+				gpsStatus = 'ready';
+			},
+			(err) => {
+				gpsStatus = 'error';
+				gpsError = err.message || 'Gagal mengambil koordinat GPS.';
+			},
+			{ enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
+		);
+	}
 
 	let outboxN = $state(0);
 	let feedItems = $state<FeedItem[]>([]);
@@ -97,6 +133,24 @@
 			{/if}
 		</p>
 	</div>
+
+	{#if canReportNotable}
+		<button
+			type="button"
+			class="w-full rounded-xl bg-red-600 px-5 py-4 text-left text-white shadow-sm transition-all hover:bg-red-700 active:scale-[0.99] md:px-6"
+			onclick={() => {
+				showNotableModal = true;
+				// GPS diambil otomatis di background saat modal dibuka.
+				startGpsFetch();
+			}}
+		>
+			<p class="text-xs font-bold uppercase tracking-wide text-white/90">Darurat / prioritas tinggi</p>
+			<p class="mt-1 text-lg font-black tracking-tight">LAPOR KEJADIAN MENONJOL</p>
+			<p class="mt-1 text-sm text-white/90">
+				Kirim laporan cepat (jenis, foto, deskripsi) + koordinat GPS otomatis untuk ditampilkan di Live Wall.
+			</p>
+		</button>
+	{/if}
 
 	{#if data.roleView === 'polsek' && data.polsekAwareness}
 		{@const pa = data.polsekAwareness}
@@ -420,3 +474,146 @@
 		{/if}
 	</div>
 </div>
+
+{#if showNotableModal}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Lapor kejadian menonjol"
+		onclick={() => (showNotableModal = false)}
+		onkeydown={(e) => {
+			if (e.key === 'Escape') showNotableModal = false;
+		}}
+	>
+		<div
+			class="relative w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-xl"
+			role="document"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={() => {}}
+		>
+			<div class="flex items-start justify-between gap-3">
+				<div>
+					<p class="text-xs font-bold uppercase tracking-wide text-red-600">Kejadian Menonjol</p>
+					<h2 class="mt-0.5 text-lg font-bold text-foreground">Lapor cepat</h2>
+					<p class="mt-1 text-xs text-muted-foreground">
+						Koordinat GPS diambil otomatis di background. Pastikan izin lokasi aktif.
+					</p>
+				</div>
+				<button
+					type="button"
+					class="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+					onclick={() => (showNotableModal = false)}
+					aria-label="Tutup"
+				>
+					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+
+			<form
+				method="POST"
+				action="?/notableIncident"
+				enctype="multipart/form-data"
+				class="mt-4 space-y-3"
+				use:enhance={() => {
+					submittingNotable = true;
+					return async ({ update, result }) => {
+						submittingNotable = false;
+						await update();
+						// Tutup hanya jika action sukses.
+						// result bisa undefined jika navigasi/replace; tetap aman.
+						if ((result as { type?: string } | undefined)?.type === 'success') {
+							showNotableModal = false;
+						}
+					};
+				}}
+			>
+				{#if form?.error}
+					<div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+						{form.error}
+					</div>
+				{/if}
+
+				<div class="grid gap-3 sm:grid-cols-2">
+					<div class="space-y-1.5">
+						<label for="km-jenis" class="text-xs font-medium text-foreground">Jenis</label>
+						<select
+							id="km-jenis"
+							name="jenis"
+							required
+							class="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+						>
+							<option value="Tawuran">Tawuran</option>
+							<option value="Kebakaran">Kebakaran</option>
+							<option value="Kecelakaan">Kecelakaan</option>
+							<option value="Bencana">Bencana</option>
+							<option value="Kriminalitas">Kriminalitas</option>
+							<option value="Lainnya">Lainnya</option>
+						</select>
+					</div>
+					<div class="space-y-1.5">
+						<label for="km-foto" class="text-xs font-medium text-foreground">Kamera (capture)</label>
+						<input
+							id="km-foto"
+							name="foto"
+							type="file"
+							accept="image/*"
+							capture="environment"
+							class="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-foreground"
+						/>
+					</div>
+				</div>
+
+				<div class="space-y-1.5">
+					<label for="km-deskripsi" class="text-xs font-medium text-foreground">Deskripsi singkat</label>
+					<textarea
+						id="km-deskripsi"
+						name="deskripsi"
+						required
+						rows="3"
+						class="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+						placeholder="Contoh: Tawuran massa di Jl. X, butuh bantuan unit terdekat..."
+					></textarea>
+				</div>
+
+				<input type="hidden" name="lat" value={gpsLat ?? ''} />
+				<input type="hidden" name="lng" value={gpsLng ?? ''} />
+				<input type="hidden" name="accuracy_m" value={gpsAcc ?? ''} />
+
+				<div class="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+					<div class="flex items-center justify-between gap-2">
+						<p class="font-medium text-foreground">GPS</p>
+						<button
+							type="button"
+							class="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
+							onclick={startGpsFetch}
+						>
+							Refresh GPS
+						</button>
+					</div>
+					{#if gpsStatus === 'ready' && gpsLat != null && gpsLng != null}
+						<p class="mt-1 font-mono text-[11px] text-muted-foreground">
+							Lat {gpsLat.toFixed(6)} · Lng {gpsLng.toFixed(6)}{gpsAcc != null ? ` · ±${Math.round(gpsAcc)}m` : ''}
+						</p>
+					{:else if gpsStatus === 'loading'}
+						<p class="mt-1 text-muted-foreground">Mengambil koordinat…</p>
+					{:else if gpsStatus === 'error'}
+						<p class="mt-1 text-destructive">{gpsError || 'Gagal mengambil GPS.'}</p>
+					{:else}
+						<p class="mt-1 text-muted-foreground">Belum ada koordinat.</p>
+					{/if}
+				</div>
+
+				<button
+					type="submit"
+					disabled={submittingNotable || gpsStatus !== 'ready'}
+					class="mt-1 inline-flex h-11 w-full items-center justify-center rounded-xl bg-red-600 text-sm font-extrabold tracking-wide text-white shadow-sm transition-all hover:bg-red-700 disabled:opacity-50"
+				>
+					{submittingNotable ? 'Mengirim…' : 'KIRIM LAPORAN'}
+				</button>
+			</form>
+		</div>
+	</div>
+{/if}

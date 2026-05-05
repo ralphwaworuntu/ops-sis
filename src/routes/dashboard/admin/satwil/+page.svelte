@@ -7,12 +7,20 @@
 	let { data, form } = $props();
 
 	let tab = $state<'polres' | 'polsek' | 'personil'>('polres');
-	let pickLat = $state(-6.23);
-	let pickLng = $state(106.83);
+	// Default view selaras dengan Live Wall: NTT
+	let pickLat = $state(-9.6);
+	let pickLng = $state(123.9);
 	let mapContainer: HTMLDivElement | undefined = $state();
-	let map: import('leaflet').Map | undefined;
-	let Lmod: typeof import('leaflet') | undefined;
-	let markersLayer: import('leaflet').LayerGroup | undefined;
+	let map = $state<import('leaflet').Map | null>(null);
+	let Lmod = $state<typeof import('leaflet') | null>(null);
+	let markersLayer = $state<import('leaflet').LayerGroup | null>(null);
+	let pickLayer = $state<import('leaflet').LayerGroup | null>(null);
+	let pickMarker: import('leaflet').Marker | null = $state(null);
+	let didAutoFit = $state(false);
+	let mapReady = $state(false);
+
+	let editingUnitId = $state<number | null>(null);
+	let editingUnitLabel = $state<string>('');
 
 	function selectPolres(id: string) {
 		const u = new URL($page.url.href);
@@ -26,50 +34,141 @@
 		formData.set('lng', String(pickLng));
 	}
 
+	function padMapToUnitMarkerForm({ formData }: { formData: FormData }) {
+		if (editingUnitId != null) formData.set('unit_id', String(editingUnitId));
+		formData.set('lat', String(pickLat));
+		formData.set('lng', String(pickLng));
+	}
+
 	onMount(() => {
 		let destroyed = false;
 		void import('leaflet').then((L) => {
 			if (destroyed || !mapContainer) return;
 			Lmod = L;
-			map = L.map(mapContainer).setView([pickLat, pickLng], 10);
+			map = L.map(mapContainer).setView([pickLat, pickLng], 7);
+			// Pane khusus untuk pin edit agar selalu terlihat (di atas marker lain).
+			map.createPane('satwil-pin-pane');
+			// z-index default marker pane ~600; kita naikkan sedikit.
+			const paneEl = map.getPane('satwil-pin-pane');
+			if (paneEl) paneEl.style.zIndex = '650';
 			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 				attribution: '&copy; OpenStreetMap',
 				maxZoom: 19
 			}).addTo(map);
 			markersLayer = L.layerGroup().addTo(map);
+			pickLayer = L.layerGroup().addTo(map);
 			map.on('click', (e) => {
 				pickLat = e.latlng.lat;
 				pickLng = e.latlng.lng;
+				// Jika sedang edit, klik peta akan memindahkan pin draggable juga.
+				if (editingUnitId != null && pickMarker) {
+					pickMarker.setLatLng(e.latlng);
+				}
 			});
+
+			// Pastikan ukuran terhitung (jika container baru render).
+			setTimeout(() => map?.invalidateSize(), 50);
+			mapReady = true;
 		});
 		return () => {
 			destroyed = true;
 			map?.remove();
-			map = undefined;
-			markersLayer = undefined;
-			Lmod = undefined;
+			map = null;
+			markersLayer = null;
+			pickLayer = null;
+			Lmod = null;
+			pickMarker = null;
+			didAutoFit = false;
+			mapReady = false;
 		};
 	});
 
 	$effect(() => {
-		if (!map || !Lmod || !markersLayer) return;
+		if (!mapReady || !map || !Lmod || !markersLayer) return;
 		markersLayer.clearLayers();
+
+		const polresIcon = Lmod.icon({
+			iconUrl: '/markers/polres.png',
+			iconSize: [46, 46],
+			iconAnchor: [23, 45],
+			popupAnchor: [0, -40]
+		});
+		const polsekIcon = Lmod.icon({
+			iconUrl: '/markers/polsek.png',
+			iconSize: [46, 46],
+			iconAnchor: [23, 45],
+			popupAnchor: [0, -40]
+		});
+		const poldaIcon = Lmod.icon({
+			iconUrl: '/markers/polda.png',
+			iconSize: [64, 64],
+			iconAnchor: [32, 32],
+			popupAnchor: [0, -30]
+		});
+
+		// POLDA NTT (Kompleks Polda / Lapangan Polda, Kupang) — marker tetap.
+		const POLDA_NTT: [number, number] = [-10.1777143, 123.5976401];
+
+		const boundsPts: [number, number][] = [];
+		boundsPts.push(POLDA_NTT);
+		Lmod
+			.marker(POLDA_NTT, { icon: poldaIcon })
+			.bindPopup('<strong>POLDA NTT</strong><br/>Kupang')
+			.addTo(markersLayer);
+
 		for (const p of data.polresList) {
 			if (p.lat != null && p.lng != null) {
-				Lmod
-					.circleMarker([p.lat, p.lng], { radius: 8, color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.85 })
+				boundsPts.push([p.lat, p.lng]);
+				Lmod.marker([p.lat, p.lng], { icon: polresIcon })
 					.bindPopup(`<strong>POLRES</strong><br/>${p.nama}`)
 					.addTo(markersLayer);
 			}
 		}
 		for (const s of data.polsekList) {
 			if (s.lat != null && s.lng != null) {
-				Lmod
-					.circleMarker([s.lat, s.lng], { radius: 6, color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.9 })
+				boundsPts.push([s.lat, s.lng]);
+				Lmod.marker([s.lat, s.lng], { icon: polsekIcon })
 					.bindPopup(`<strong>POLSEK</strong><br/>${s.nama}`)
 					.addTo(markersLayer);
 			}
 		}
+
+		// Auto-jump sekali supaya marker terlihat. Jika tidak ada koordinat, tetap default NTT.
+		if (!didAutoFit && boundsPts.length > 0) {
+			didAutoFit = true;
+			const b = Lmod.latLngBounds(boundsPts);
+			map.flyToBounds(b, { padding: [40, 40], maxZoom: 10, duration: 0.9 });
+		}
+	});
+
+	// Pin edit (draggable) dikelola terpisah agar tidak hilang saat layer marker direfresh.
+	$effect(() => {
+		if (!mapReady || !map || !Lmod || !pickLayer) return;
+		pickLayer.clearLayers();
+		pickMarker = null;
+		if (editingUnitId == null) return;
+
+		const icon = Lmod.divIcon({
+			className: 'satwil-pin',
+			html: '<div class=\"satwil-pin__dot\"></div>',
+			iconSize: [18, 18],
+			iconAnchor: [9, 9]
+		});
+		pickMarker = Lmod
+			.marker([pickLat, pickLng], { icon, draggable: true, pane: 'satwil-pin-pane' })
+			.bindPopup(`<strong>PIN</strong><br/>${editingUnitLabel || 'Lokasi unit'}`)
+			.addTo(pickLayer);
+		pickMarker.on('dragend', () => {
+			const ll = pickMarker?.getLatLng();
+			if (!ll) return;
+			pickLat = ll.lat;
+			pickLng = ll.lng;
+		});
+	});
+
+	$effect(() => {
+		if (editingUnitId == null || !pickMarker) return;
+		pickMarker.setLatLng([pickLat, pickLng]);
 	});
 </script>
 
@@ -154,6 +253,66 @@
 										</span>
 									</summary>
 									<div class="mt-3 space-y-3">
+										<div class="rounded-lg border border-border bg-muted/30 p-3 text-xs">
+											<p class="font-medium text-foreground">Ubah lokasi via pin peta</p>
+											<p class="mt-1 text-muted-foreground">
+												Klik tombol di bawah, lalu <strong>klik peta</strong> untuk memindahkan pin. Setelah sesuai, simpan.
+											</p>
+											<div class="mt-2 flex flex-wrap gap-2">
+												<button
+													type="button"
+													class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+													onclick={() => {
+														editingUnitId = p.id;
+														editingUnitLabel = p.nama;
+														pickLat = p.lat ?? -9.6;
+														pickLng = p.lng ?? 123.9;
+														map?.flyTo([pickLat, pickLng], 11, { duration: 0.8 });
+													}}
+												>
+													Ubah lokasi di peta
+												</button>
+												{#if editingUnitId === p.id}
+													<form
+														method="POST"
+														action="?/setUnitMarker"
+														use:enhance={(args) => {
+															padMapToUnitMarkerForm(args);
+															return async ({ result, update }) => {
+																await update();
+																if (result.type === 'success') {
+																	editingUnitId = null;
+																	editingUnitLabel = '';
+																}
+															};
+														}}
+													>
+														<button
+															type="submit"
+															class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+														>
+															Simpan lokasi (pin)
+														</button>
+													</form>
+													<button
+														type="button"
+														class="rounded-lg px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted"
+														onclick={() => {
+															editingUnitId = null;
+															editingUnitLabel = '';
+														}}
+													>
+														Batal
+													</button>
+												{/if}
+											</div>
+											{#if editingUnitId === p.id}
+												<p class="mt-2 font-mono text-[11px] text-foreground">
+													Pin: {pickLat.toFixed(5)}, {pickLng.toFixed(5)}
+												</p>
+											{/if}
+										</div>
+
 										<form method="POST" action="?/updatePolres" class="space-y-2" use:enhance>
 											<input type="hidden" name="id" value={p.id} />
 											<input name="nama" value={p.nama} class="flex h-9 w-full rounded border border-input px-2 text-sm" />
@@ -425,3 +584,18 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	:global(.satwil-pin) {
+		background: transparent;
+		border: none;
+	}
+	:global(.satwil-pin__dot) {
+		width: 18px;
+		height: 18px;
+		border-radius: 9999px;
+		background: #ef4444;
+		border: 3px solid #fff;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+	}
+</style>

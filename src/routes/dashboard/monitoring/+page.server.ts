@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { rengiat, units, activityReports, users } from '$lib/server/db/schema';
+import { rengiat, units, activityReports, users, vulnerabilityPoints } from '$lib/server/db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { listPolresUnderPolda, isPoldaOrKaro } from '$lib/server/polda-scope';
 import { listActiveFieldSessionsForPolres } from '$lib/server/field-giat';
@@ -35,7 +35,11 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 		.select({
 			id: rengiat.id,
 			judul: rengiat.judul,
+			kategori: rengiat.kategori,
 			status: rengiat.status,
+			urgency: rengiat.urgency,
+			requiresPoldaApproval: rengiat.requiresPoldaApproval,
+			targetPointId: rengiat.targetPointId,
 			jumlahRencanaPlotting: rengiat.jumlahRencanaPlotting,
 			polresNama: units.nama,
 			polresId: rengiat.polresId
@@ -104,12 +108,44 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 			return { ...r, ...agg, ok };
 		});
 
+	const pendingReview = list
+		.filter((r) => r.status === 'PendingReview' || r.status === 'PendingKabo')
+		.sort((a, b) => {
+			const ua = a.urgency === 'HIGH' ? 0 : 1;
+			const ub = b.urgency === 'HIGH' ? 0 : 1;
+			return ua - ub;
+		});
+
+	const targetPointIds = list
+		.map((r) => r.targetPointId)
+		.filter((id): id is number => id != null);
+	const vulnPointsMap: Record<number, { id: number; lat: number; lng: number; jenisKejahatan: string; frekuensi: number; keterangan: string | null }> = {};
+	if (targetPointIds.length > 0) {
+		const pts = db
+			.select({
+				id: vulnerabilityPoints.id,
+				lat: vulnerabilityPoints.lat,
+				lng: vulnerabilityPoints.lng,
+				jenisKejahatan: vulnerabilityPoints.jenisKejahatan,
+				frekuensi: vulnerabilityPoints.frekuensi,
+				keterangan: vulnerabilityPoints.keterangan
+			})
+			.from(vulnerabilityPoints)
+			.where(inArray(vulnerabilityPoints.id, targetPointIds))
+			.all();
+		for (const p of pts) {
+			vulnPointsMap[p.id] = p;
+		}
+	}
+
 	return {
 		mode: 'polda' as const,
 		fieldActive: [] as ReturnType<typeof listActiveFieldSessionsForPolres>,
 		polresList,
 		polresFilter,
 		comparisons,
+		pendingReview,
+		vulnPointsMap,
 		reports: reports.slice(0, 50)
 	};
 };

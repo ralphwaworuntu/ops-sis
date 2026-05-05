@@ -6,7 +6,8 @@ export interface SSEEvent {
 		| 'lhp_new'
 		| 'field_giat_update'
 		| 'lhp_verification'
-		| 'heartbeat_stale';
+		| 'heartbeat_stale'
+		| 'notable_incident';
 	data: Record<string, unknown> & {
 		message?: string;
 		/** Hanya peran ini yang melihat toast; kosong/undefined = semua peran. */

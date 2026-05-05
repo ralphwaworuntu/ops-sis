@@ -23,15 +23,14 @@
 
 	function kategoriBadge(kategori: string | null | undefined) {
 		const k = kategori ?? 'Rengiat Harian';
-		if (
-			k === 'Rengiat Pengamanan Objek Vital' ||
-			k === 'Rengiat Pengamanan Tamu VIP' ||
-			k === 'Rengiat Pengamanan Tamu VVIP'
-		) {
+		if (k === 'Rengiat Pengamanan Tamu VVIP') {
+			return { label: k, cls: 'kat-badge-vvip' };
+		}
+		if (k === 'Rengiat Pengamanan Tamu VIP' || k === 'Rengiat Pengamanan Objek Vital') {
 			return { label: k, cls: 'bg-red-100 text-red-800' };
 		}
 		if (k === 'Rengiat Penanganan Zona Merah') {
-			return { label: k, cls: 'bg-orange-100 text-orange-800' };
+			return { label: k, cls: 'kat-badge-zona-merah' };
 		}
 		return { label: k, cls: 'bg-yellow-100 text-yellow-800' };
 	}
@@ -133,8 +132,14 @@
 							{statusLabels[item.status]}
 						</span>
 					</div>
-					<div class="mb-2">
+					<div class="mb-2 flex flex-wrap items-center gap-1">
 						<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {kb.cls}">{kb.label}</span>
+						{#if item.urgency === 'HIGH'}
+							<span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">Urgensi TINGGI</span>
+						{/if}
+						{#if item.requiresPoldaApproval}
+							<span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">Review POLDA</span>
+						{/if}
 					</div>
 					<p class="line-clamp-2 text-xs text-muted-foreground">{item.deskripsi}</p>
 					<div class="mt-2 text-[11px] text-muted-foreground">
@@ -150,3 +155,21 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	:global(.kat-badge-vvip) {
+		background: linear-gradient(135deg, #fef3c7, #fde68a);
+		color: #92400e;
+		border: 1px solid #f59e0b;
+		font-weight: 700;
+	}
+	:global(.kat-badge-zona-merah) {
+		background: #fef2f2;
+		color: #991b1b;
+		animation: badge-pulse 2s ease-in-out infinite;
+	}
+	@keyframes badge-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+</style>

@@ -203,6 +203,8 @@ export async function submitPolsekActivityReport(
 			distanceMeters: dist,
 			deskripsi,
 			judul: rg.judul,
+			kategori: rg.kategori ?? 'Rengiat Harian',
+			urgency: rg.urgency ?? 'NORMAL',
 			polresNama: polRow?.nama ?? '',
 			userNama: locals.user.nama,
 			createdAt: reportCreatedAt,

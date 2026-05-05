@@ -28,15 +28,14 @@
 
 	function kategoriBadge(kategori: string | null | undefined) {
 		const k = kategori ?? 'Rengiat Harian';
-		if (
-			k === 'Rengiat Pengamanan Objek Vital' ||
-			k === 'Rengiat Pengamanan Tamu VIP' ||
-			k === 'Rengiat Pengamanan Tamu VVIP'
-		) {
+		if (k === 'Rengiat Pengamanan Tamu VVIP') {
+			return { label: k, cls: 'kat-badge-vvip' };
+		}
+		if (k === 'Rengiat Pengamanan Tamu VIP' || k === 'Rengiat Pengamanan Objek Vital') {
 			return { label: k, cls: 'bg-red-50 text-red-800 border-red-200' };
 		}
 		if (k === 'Rengiat Penanganan Zona Merah') {
-			return { label: k, cls: 'bg-orange-50 text-orange-800 border-orange-200' };
+			return { label: k, cls: 'kat-badge-zona-merah' };
 		}
 		return { label: k, cls: 'bg-yellow-50 text-yellow-800 border-yellow-200' };
 	}
@@ -229,6 +228,40 @@
 				</div>
 			{/if}
 
+			<!-- Category-specific detail info -->
+			{#if r.requiresPoldaApproval || r.urgency === 'HIGH' || r.namaTamu || r.instansiTerkait || r.tingkatKerawanan || r.analisaSingkatAncaman}
+				<div class="rounded-xl border border-border bg-card p-5 shadow-sm space-y-3">
+					<h2 class="text-sm font-semibold text-foreground">Detail Kategori</h2>
+					{#if r.requiresPoldaApproval}
+						<div class="flex items-center gap-2">
+							<span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Wajib Review POLDA</span>
+						</div>
+					{/if}
+					{#if r.urgency === 'HIGH'}
+						<div class="flex items-center gap-2">
+							<span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-800">Urgensi TINGGI</span>
+						</div>
+					{/if}
+					{#if r.namaTamu}
+						<div class="text-sm"><span class="text-muted-foreground">Nama Tamu:</span> <strong>{r.namaTamu}</strong></div>
+					{/if}
+					{#if r.instansiTerkait}
+						<div class="text-sm">
+							<span class="text-muted-foreground">Instansi Terkait:</span>
+							{#each JSON.parse(r.instansiTerkait) as inst}
+								<span class="ml-1 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">{inst}</span>
+							{/each}
+						</div>
+					{/if}
+					{#if r.tingkatKerawanan}
+						<div class="text-sm"><span class="text-muted-foreground">Tingkat Kerawanan:</span> <strong>{r.tingkatKerawanan}</strong></div>
+					{/if}
+					{#if r.analisaSingkatAncaman}
+						<div class="text-sm"><span class="text-muted-foreground">Analisa Ancaman:</span> {r.analisaSingkatAncaman}</div>
+					{/if}
+				</div>
+			{/if}
+
 			<!-- AI Analysis -->
 			{#if r.aiAnalysis}
 				<div class="rounded-xl border border-blue-200 bg-blue-50/50 p-5 shadow-sm">
@@ -397,3 +430,21 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	:global(.kat-badge-vvip) {
+		background: linear-gradient(135deg, #fef3c7, #fde68a);
+		color: #92400e;
+		border: 1px solid #f59e0b;
+		font-weight: 700;
+	}
+	:global(.kat-badge-zona-merah) {
+		background: #fef2f2;
+		color: #991b1b;
+		animation: badge-pulse 2s ease-in-out infinite;
+	}
+	@keyframes badge-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+</style>

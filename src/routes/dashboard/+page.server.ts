@@ -1,7 +1,18 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { rengiat, activityReports, vulnerabilityPoints, units, users } from '$lib/server/db/schema';
+import {
+	rengiat,
+	activityReports,
+	vulnerabilityPoints,
+	units,
+	users,
+	notableIncidents
+} from '$lib/server/db/schema';
 import { eq, and, count, sql, desc, gte, inArray } from 'drizzle-orm';
+import { fail, type Actions } from '@sveltejs/kit';
+import { saveFile } from '$lib/server/storage';
+import { sseBroadcaster } from '$lib/server/sse';
+import { auditFromRequest } from '$lib/server/audit';
 
 function kpiFromReportsWeek(
 	reportsWeek: { isBuktiLapangan: boolean; lat: number | null; lng: number | null }[]
@@ -331,4 +342,106 @@ export const load: PageServerLoad = async ({ parent }) => {
 		polresLeaderboard: null as null,
 		lhpAwaitingCount: null as null
 	};
+};
+
+export const actions: Actions = {
+	notableIncident: async (event) => {
+		const { locals, request, getClientAddress } = event;
+		if (!locals.user || !['POLSEK', 'POLRES'].includes(locals.user.role)) {
+			return fail(403, { error: 'Unauthorized' });
+		}
+		const data = await request.formData();
+		const jenis = data.get('jenis')?.toString()?.trim() ?? '';
+		const deskripsi = data.get('deskripsi')?.toString()?.trim() ?? '';
+		const foto = data.get('foto') as File | null;
+
+		const latRaw = data.get('lat')?.toString()?.trim() ?? '';
+		const lngRaw = data.get('lng')?.toString()?.trim() ?? '';
+		const accRaw = data.get('accuracy_m')?.toString()?.trim() ?? '';
+		const lat = latRaw ? parseFloat(latRaw) : null;
+		const lng = lngRaw ? parseFloat(lngRaw) : null;
+		const accuracyMeters = accRaw ? parseFloat(accRaw) : null;
+
+		const allowedJenis = [
+			'Tawuran',
+			'Kebakaran',
+			'Kecelakaan',
+			'Bencana',
+			'Kriminalitas',
+			'Lainnya'
+		] as const;
+		if (!allowedJenis.includes(jenis as (typeof allowedJenis)[number])) {
+			return fail(400, { error: 'Jenis kejadian tidak valid.' });
+		}
+		if (!deskripsi) {
+			return fail(400, { error: 'Deskripsi singkat wajib diisi.' });
+		}
+		if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+			return fail(400, { error: 'Koordinat GPS belum tersedia. Aktifkan lokasi lalu coba lagi.' });
+		}
+
+		let fotoPath: string | null = null;
+		if (foto && foto.size > 0) {
+			if (foto.size > 7 * 1024 * 1024) {
+				return fail(400, { error: 'Ukuran foto maksimal 7MB.' });
+			}
+			fotoPath = await saveFile(foto, 'kejadian-menonjol');
+		}
+
+		const role = locals.user.role as 'POLSEK' | 'POLRES';
+		const unitId = locals.user.unitId!;
+		const polresId =
+			role === 'POLRES' ? locals.user.unitId! : (locals.user.polresId ?? locals.user.unitId!);
+
+		const inserted = db
+			.insert(notableIncidents)
+			.values({
+				jenis,
+				deskripsi,
+				fotoPath,
+				lat,
+				lng,
+				accuracyMeters: accuracyMeters != null && !Number.isNaN(accuracyMeters) ? accuracyMeters : null,
+				role,
+				unitId,
+				polresId,
+				createdBy: locals.user.id
+			})
+			.returning({ id: notableIncidents.id, createdAt: notableIncidents.createdAt })
+			.all();
+		const incidentId = inserted[0]?.id ?? null;
+		const createdAt = inserted[0]?.createdAt ?? new Date().toISOString();
+
+		auditFromRequest(locals.user.id, request, getClientAddress, {
+			action: 'NOTABLE_INCIDENT_CREATE',
+			entityType: 'notable_incident',
+			entityId: incidentId ?? undefined,
+			detail: { jenis, hasFoto: Boolean(fotoPath), polresId }
+		});
+
+		const polresRow = db.select({ nama: units.nama }).from(units).where(eq(units.id, polresId)).get();
+		const unitRow = db.select({ nama: units.nama }).from(units).where(eq(units.id, unitId)).get();
+
+		sseBroadcaster.emit({
+			type: 'notable_incident',
+			data: {
+				id: incidentId,
+				jenis,
+				deskripsi,
+				fotoPath,
+				lat,
+				lng,
+				createdAt,
+				role,
+				unitId,
+				unitNama: unitRow?.nama ?? '',
+				polresId,
+				polresNama: polresRow?.nama ?? '',
+				userNama: locals.user.nama,
+				message: 'Laporan kejadian menonjol baru masuk'
+			}
+		});
+
+		return { success: true };
+	}
 };

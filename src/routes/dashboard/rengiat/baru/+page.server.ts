@@ -1,7 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { rengiat } from '$lib/server/db/schema';
+import { rengiat, vulnerabilityPoints } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 import { saveFile } from '$lib/server/storage';
 
 export const load: PageServerLoad = async ({ parent }) => {
@@ -9,6 +10,22 @@ export const load: PageServerLoad = async ({ parent }) => {
 	if (user!.role !== 'POLRES') {
 		redirect(302, '/dashboard/rengiat');
 	}
+
+	const points = db
+		.select({
+			id: vulnerabilityPoints.id,
+			lat: vulnerabilityPoints.lat,
+			lng: vulnerabilityPoints.lng,
+			jenisKejahatan: vulnerabilityPoints.jenisKejahatan,
+			keterangan: vulnerabilityPoints.keterangan,
+			origin: vulnerabilityPoints.origin,
+			frekuensi: vulnerabilityPoints.frekuensi
+		})
+		.from(vulnerabilityPoints)
+		.where(eq(vulnerabilityPoints.polresId, user!.unitId!))
+		.all();
+
+	return { vulnerabilityPoints: points };
 };
 
 export const actions: Actions = {
@@ -68,6 +85,42 @@ export const actions: Actions = {
 			filePath = await saveFile(rengiatFile, 'rengiat');
 		}
 
+		const isVipVvip =
+			kategori === 'Rengiat Pengamanan Tamu VIP' || kategori === 'Rengiat Pengamanan Tamu VVIP';
+		const isZonaMerah = kategori === 'Rengiat Penanganan Zona Merah';
+		const isObjekVital = kategori === 'Rengiat Pengamanan Objek Vital';
+
+		const targetPointIdRaw = parseInt(data.get('target_point_id')?.toString() ?? '', 10);
+		const targetPointId = isNaN(targetPointIdRaw) ? null : targetPointIdRaw;
+
+		if ((isZonaMerah || isObjekVital) && !targetPointId) {
+			return fail(400, { error: 'Lokasi/Target titik rawan wajib dipilih untuk kategori ini.' });
+		}
+
+		let instansiTerkait: string | null = null;
+		let namaTamu: string | null = null;
+		if (isVipVvip) {
+			const instansiArr = data.getAll('instansi_terkait').map((v) => v.toString().trim()).filter(Boolean);
+			instansiTerkait = instansiArr.length > 0 ? JSON.stringify(instansiArr) : null;
+			namaTamu = data.get('nama_tamu')?.toString()?.trim() || null;
+			if (!namaTamu) {
+				return fail(400, { error: 'Nama tamu wajib diisi untuk kategori VIP/VVIP.' });
+			}
+		}
+
+		let tingkatKerawanan: 'Low' | 'Medium' | 'High' | null = null;
+		let analisaSingkatAncaman: string | null = null;
+		if (isZonaMerah) {
+			const tkRaw = data.get('tingkat_kerawanan')?.toString()?.trim() ?? '';
+			tingkatKerawanan = (['Low', 'Medium', 'High'] as const).includes(tkRaw as 'Low')
+				? (tkRaw as 'Low' | 'Medium' | 'High')
+				: 'High';
+			analisaSingkatAncaman = data.get('analisa_singkat_ancaman')?.toString()?.trim() || null;
+		}
+
+		const requiresPoldaApproval = isVipVvip;
+		const urgency = (isVipVvip || isZonaMerah) ? 'HIGH' as const : 'NORMAL' as const;
+
 		const result = db
 			.insert(rengiat)
 			.values({
@@ -80,6 +133,13 @@ export const actions: Actions = {
 				anchorLat: isNaN(alat) ? null : alat,
 				anchorLng: isNaN(alng) ? null : alng,
 				operasiSelesai,
+				requiresPoldaApproval,
+				urgency,
+				targetPointId,
+				instansiTerkait,
+				namaTamu,
+				tingkatKerawanan,
+				analisaSingkatAncaman,
 				polresId: locals.user.unitId!,
 				createdBy: locals.user.id
 			})

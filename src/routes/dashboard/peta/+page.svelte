@@ -21,9 +21,16 @@
 	let formMessage = $state('');
 	let mapReady = $state(false);
 
-	let showRadius = $state(false);
-	let radiusMStr = $state('500');
 	let showPatrolMandatory = $state(true);
+
+	// Form POLRES: multi-jenis kejahatan per titik
+	let polresRadiusM = $state(500);
+	let jumlahJenis = $state(1);
+	let crimeSectionsOpen = $state<boolean[]>(Array.from({ length: 10 }, (_, i) => i === 0));
+	let crimeJenis = $state<string[]>(Array.from({ length: 10 }, () => 'C3'));
+	let crimeJenisLainnya = $state<string[]>(Array.from({ length: 10 }, () => ''));
+	let crimeFrekuensi = $state<number[]>(Array.from({ length: 10 }, () => 1));
+	let crimeKeterangan = $state<string[]>(Array.from({ length: 10 }, () => ''));
 
 	/** Mode taktis POLSEK: klik titik → radius + rute */
 	let tacticalTargetId = $state<number | null>(null);
@@ -62,11 +69,17 @@
 	);
 
 	function markerColorForPoint(pt: { jenisKejahatan: string; origin?: string | null }) {
+		if (pt.origin === 'polda') return '#7c3aed';
 		const base = crimeColors[pt.jenisKejahatan] ?? '#6b7280';
 		if (isPolsek && pt.origin === 'polsek') return '#f59e0b';
 		if (isPolsek && (pt.origin === 'polres' || !pt.origin)) return '#dc2626';
 		return base;
 	}
+
+	$effect(() => {
+		// Pastikan jumlahJenis dalam range dan section open mengikuti
+		jumlahJenis = Math.min(10, Math.max(1, jumlahJenis));
+	});
 
 	function lockBoundsLeaflet(L: typeof import('leaflet'), lat: number, lng: number, radiusM: number) {
 		const dLat = radiusM / 111320;
@@ -137,22 +150,22 @@
 			if (isPolsek) {
 				marker.on('click', () => {
 					tacticalTargetId = pt.id;
+					tacticRadiusMStr = String((pt.radiusM ?? 500) as number);
 					tacticalRoute = null;
 					tacticalErr = '';
 				});
 			}
 			clusterGroup.addLayer(marker);
 
-			if (!isPolsek && showRadius) {
-				const radiusMeters = parseInt(radiusMStr, 10) || 500;
-				L.circle([pt.lat, pt.lng], {
-					radius: radiusMeters,
-					color,
-					weight: 1,
-					fillColor: color,
-					fillOpacity: 0.12
-				}).addTo(radiusGroup);
-			}
+			// Radius titik rawan selalu mengikuti data POLRES (pt.radiusM).
+			const radiusMeters = (pt.radiusM ?? 500) as number;
+			L.circle([pt.lat, pt.lng], {
+				radius: radiusMeters,
+				color,
+				weight: 1,
+				fillColor: color,
+				fillOpacity: 0.10
+			}).addTo(radiusGroup);
 		}
 
 		if (isPolsek && data.viewMode === 'polsek' && showPatrolMandatory) {
@@ -273,7 +286,8 @@
 					minZoom: 13
 				}).setView([c.lat, c.lng], 16);
 			} else {
-				map = L.map(mapContainer).setView([-6.23, 106.83], 12);
+				// Default view: Provinsi Nusa Tenggara Timur (NTT) (selaras dengan Live Wall)
+				map = L.map(mapContainer).setView([-9.6, 123.9], 7);
 			}
 
 			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -333,11 +347,35 @@
 	$effect(() => {
 		void data.points;
 		void data.hqMarkers;
-		void showRadius;
-		void radiusMStr;
 		void showPatrolMandatory;
 		void isPolsek;
 		if (mapReady) refreshLayers();
+	});
+
+	// Jika filter Satwil (POLRES) dipilih, animasikan jump-in ke wilayah tsb.
+	$effect(() => {
+		if (!mapReady || !map || !Lref) return;
+		if (data.viewMode === 'polsek') return;
+		const wid = data.polresFilter as number | null | undefined;
+		if (!wid) return;
+
+		// Prioritas: fit bounds ke titik rawan yang sedang terfilter
+		const pts = (data.points ?? []).filter((p) => p.lat != null && p.lng != null);
+		if (pts.length >= 2) {
+			const bounds = Lref.latLngBounds(pts.map((p) => [p.lat, p.lng] as [number, number]));
+			map.flyToBounds(bounds, { padding: [56, 56], maxZoom: 13, duration: 0.9 });
+			return;
+		}
+		if (pts.length === 1) {
+			map.flyTo([pts[0].lat, pts[0].lng], 13, { duration: 0.9 });
+			return;
+		}
+
+		// Fallback: pakai markas POLRES jika tidak ada titik
+		const hq = (data.hqMarkers ?? []).find((h) => h.id === wid && h.lat != null && h.lng != null);
+		if (hq?.lat != null && hq.lng != null) {
+			map.flyTo([hq.lat, hq.lng], 12, { duration: 0.9 });
+		}
 	});
 
 	$effect(() => {
@@ -408,27 +446,6 @@
 					<input type="checkbox" bind:checked={showPatrolMandatory} class="rounded border-input" />
 					Layer radius patroli (250m–1km)
 				</label>
-			{:else}
-				<label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium">
-					<input type="checkbox" bind:checked={showRadius} class="rounded border-input" />
-					Radius titik rawan
-				</label>
-				<select
-					bind:value={radiusMStr}
-					class="h-9 max-w-[11rem] rounded-lg border border-input bg-background px-2 text-xs"
-					disabled={!showRadius}
-				>
-					<option value="250">250 m</option>
-					<option value="500">500 m</option>
-					<option value="750">750 m</option>
-					<option value="1000">1 km</option>
-					<option value="1500">1,5 km</option>
-					<option value="2000">2 km</option>
-					<option value="2500">2,5 km</option>
-					<option value="3000">3 km</option>
-					<option value="4000">4 km</option>
-					<option value="5000">5 km</option>
-				</select>
 			{/if}
 			{#if data.canEdit}
 				<button
@@ -456,12 +473,6 @@
 			{/if}
 		</div>
 	</div>
-
-	{#if showRadius && !isPolsek}
-		<p class="text-xs text-muted-foreground">
-			Lingkaran analisis sekitar titik rawan — pilih radius 250 m hingga 5 km (mis. radius 500 m dari titik narkoba).
-		</p>
-	{/if}
 
 	<div class="flex flex-wrap gap-2">
 		{#if isPolsek}
@@ -540,41 +551,117 @@
 							</div>
 						</div>
 
-						<div>
-							<label for="jenis_kejahatan" class="mb-1 block text-xs font-medium text-muted-foreground">Jenis Kejahatan</label>
-							<select
-								id="jenis_kejahatan"
-								name="jenis_kejahatan"
-								required
-								class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-							>
-								{#each crimeTypes.filter((x) => x !== 'Kerumunan') as jenis}
-									<option value={jenis}>{jenis}</option>
-								{/each}
-							</select>
+						<div class="grid grid-cols-2 gap-2">
+							<div>
+								<label for="radius_m" class="mb-1 block text-xs font-medium text-muted-foreground">Radius (meter)</label>
+								<input
+									id="radius_m"
+									name="radius_m"
+									type="number"
+									min="50"
+									max="5000"
+									step="10"
+									bind:value={polresRadiusM}
+									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+								/>
+								<p class="mt-1 text-[10px] text-muted-foreground">Dipakai otomatis sebagai radius titik rawan (tanpa menu).</p>
+							</div>
+							<div>
+								<label for="jumlah_jenis" class="mb-1 block text-xs font-medium text-muted-foreground">Ada berapa jenis kejahatan</label>
+								<select
+									id="jumlah_jenis"
+									name="jumlah_jenis"
+									bind:value={jumlahJenis}
+									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+								>
+									{#each Array.from({ length: 10 }, (_, i) => i + 1) as n}
+										<option value={n}>{n}</option>
+									{/each}
+								</select>
+							</div>
 						</div>
 
-						<div>
-							<label for="frekuensi" class="mb-1 block text-xs font-medium text-muted-foreground">Frekuensi</label>
-							<input
-								id="frekuensi"
-								name="frekuensi"
-								type="number"
-								min="1"
-								value="1"
-								class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-							/>
-						</div>
+						<div class="space-y-2">
+							{#each Array.from({ length: jumlahJenis }, (_, i) => i) as idx (idx)}
+								<div class="rounded-lg border border-border bg-muted/20">
+									<button
+										type="button"
+										class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-semibold text-foreground"
+										onclick={() => (crimeSectionsOpen[idx] = !crimeSectionsOpen[idx])}
+										aria-expanded={crimeSectionsOpen[idx]}
+									>
+										<span>Jenis kejahatan #{idx + 1}</span>
+										<span class="text-muted-foreground">{crimeSectionsOpen[idx] ? '—' : '+'}</span>
+									</button>
+									{#if crimeSectionsOpen[idx]}
+										<div class="space-y-2 border-t border-border px-3 py-3">
+											<div>
+												<label for={"jenis_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">Jenis Kejahatan</label>
+												<select
+													id={"jenis_" + idx}
+													name={"jenis_kejahatan_" + (idx + 1)}
+													bind:value={crimeJenis[idx]}
+													required
+													class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+												>
+													{#each crimeTypes.filter((x) => x !== 'Kerumunan') as jenis}
+														<option value={jenis}>{jenis}</option>
+													{/each}
+												</select>
+											</div>
 
-						<div>
-							<label for="keterangan" class="mb-1 block text-xs font-medium text-muted-foreground">Keterangan</label>
-							<textarea
-								id="keterangan"
-								name="keterangan"
-								rows="2"
-								class="flex w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm"
-								placeholder="Deskripsi lokasi..."
-							></textarea>
+											{#if crimeJenis[idx] === 'Lainnya'}
+												<div>
+													<label for={"jenis_lainnya_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">
+														Jenis kejahatan (lainnya)
+													</label>
+													<input
+														id={"jenis_lainnya_" + idx}
+														name={"jenis_kejahatan_lainnya_" + (idx + 1)}
+														type="text"
+														required
+														bind:value={crimeJenisLainnya[idx]}
+														class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+														placeholder="Contoh: Pemalakan, Perjudian, dll"
+													/>
+												</div>
+											{/if}
+
+											<div class="grid grid-cols-2 gap-2">
+												<div>
+													<label for={"frek_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">Frekuensi</label>
+													<input
+														id={"frek_" + idx}
+														name={"frekuensi_" + (idx + 1)}
+														type="number"
+														min="1"
+														step="1"
+														bind:value={crimeFrekuensi[idx]}
+														class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+													/>
+												</div>
+												<div class="flex items-end">
+													<p class="text-[10px] text-muted-foreground">
+														Estimasi kejadian / periode input.
+													</p>
+												</div>
+											</div>
+
+											<div>
+												<label for={"ket_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">Keterangan</label>
+												<textarea
+													id={"ket_" + idx}
+													name={"keterangan_" + (idx + 1)}
+													rows="2"
+													bind:value={crimeKeterangan[idx]}
+													class="flex w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm"
+													placeholder="Deskripsi singkat lokasi/kejadian..."
+												></textarea>
+											</div>
+										</div>
+									{/if}
+								</div>
+							{/each}
 						</div>
 
 						<button
@@ -814,7 +901,12 @@
 											{pt.jenisKejahatan}
 										</span>
 										<span class="text-xs text-muted-foreground">×{pt.frekuensi}</span>
-										{#if isPolsek}
+										<span class="text-[10px] font-medium text-muted-foreground">
+											Radius: {pt.radiusM ?? 500} m
+										</span>
+										{#if pt.origin === 'polda'}
+											<span class="text-[10px] font-medium text-violet-700">POLDA</span>
+										{:else if isPolsek}
 											<span class="text-[10px] font-medium {pt.origin === 'polsek' ? 'text-amber-700' : 'text-red-700'}">
 												{pt.origin === 'polsek' ? 'POLSEK' : 'POLRES'}
 											</span>

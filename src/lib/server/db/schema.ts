@@ -41,8 +41,10 @@ export const vulnerabilityPoints = sqliteTable('vulnerability_points', {
 	jenisKejahatan: text('jenis_kejahatan').notNull(),
 	frekuensi: integer('frekuensi').notNull().default(1),
 	keterangan: text('keterangan'),
-	/** `polres` = input POLRES/API (read-only di peta POLSEK); `polsek` = temuan lapangan POLSEK. */
-	origin: text('origin', { enum: ['polres', 'polsek'] }).notNull().default('polres'),
+	/** Radius analisis titik rawan (meter) — ditentukan POLRES saat input. */
+	radiusM: integer('radius_m').notNull().default(500),
+	/** `polres` = input POLRES/API; `polsek` = temuan lapangan POLSEK; `polda` = data Polda. */
+	origin: text('origin', { enum: ['polres', 'polsek', 'polda'] }).notNull().default('polres'),
 	polsekUnitId: integer('polsek_unit_id').references(() => units.id),
 	polresId: integer('polres_id')
 		.notNull()
@@ -54,6 +56,25 @@ export const vulnerabilityPoints = sqliteTable('vulnerability_points', {
 		.notNull()
 		.$defaultFn(() => new Date().toISOString()),
 	updatedAt: text('updated_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString())
+});
+
+/** Laporan cepat kejadian menonjol (POLSEK/POLRES) untuk ditampilkan di Live Wall. */
+export const notableIncidents = sqliteTable('notable_incidents', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	jenis: text('jenis').notNull(),
+	deskripsi: text('deskripsi').notNull(),
+	fotoPath: text('foto_path'),
+	lat: real('lat'),
+	lng: real('lng'),
+	accuracyMeters: real('accuracy_meters'),
+	role: text('role', { enum: ['POLSEK', 'POLRES'] }).notNull(),
+	unitId: integer('unit_id').notNull().references(() => units.id),
+	/** POLRES wilayah untuk scoping Live Wall. */
+	polresId: integer('polres_id').notNull().references(() => units.id),
+	createdBy: integer('created_by').notNull().references(() => users.id),
+	createdAt: text('created_at')
 		.notNull()
 		.$defaultFn(() => new Date().toISOString())
 });
@@ -86,6 +107,20 @@ export const rengiat = sqliteTable('rengiat', {
 	/** Titik acuan geo-fence LHP (opsional); jika kosong dipakai koordinat markas POLRES. */
 	anchorLat: real('anchor_lat'),
 	anchorLng: real('anchor_lng'),
+	/** True jika kategori VIP/VVIP → wajib review POLDA. */
+	requiresPoldaApproval: integer('requires_polda_approval', { mode: 'boolean' }).notNull().default(false),
+	/** NORMAL | HIGH (Zona Merah otomatis HIGH). */
+	urgency: text('urgency', { enum: ['NORMAL', 'HIGH'] }).notNull().default('NORMAL'),
+	/** FK ke vulnerability_points; wajib untuk Zona Merah / Objek Vital. */
+	targetPointId: integer('target_point_id').references(() => vulnerabilityPoints.id),
+	/** Multi-select instansi (JSON array string); khusus VIP/VVIP. */
+	instansiTerkait: text('instansi_terkait'),
+	/** Nama tamu VIP/VVIP. */
+	namaTamu: text('nama_tamu'),
+	/** Tingkat kerawanan; khusus Zona Merah. */
+	tingkatKerawanan: text('tingkat_kerawanan', { enum: ['Low', 'Medium', 'High'] }),
+	/** Analisa singkat ancaman; khusus Zona Merah. */
+	analisaSingkatAncaman: text('analisa_singkat_ancaman'),
 	/** Batas waktu operasi (ISO); setelah ini LHP dianggap tertunda jika belum ada laporan. */
 	operasiSelesai: text('operasi_selesai'),
 	polresId: integer('polres_id')

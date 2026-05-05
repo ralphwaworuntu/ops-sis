@@ -22,6 +22,8 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 			judul: rengiat.judul,
 			deskripsi: rengiat.deskripsi,
 			status: rengiat.status,
+			urgency: rengiat.urgency,
+			requiresPoldaApproval: rengiat.requiresPoldaApproval,
 			jumlahRencanaPlotting: rengiat.jumlahRencanaPlotting,
 			polresNama: units.nama,
 			createdByNama: users.nama,
