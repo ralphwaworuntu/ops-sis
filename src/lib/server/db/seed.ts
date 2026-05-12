@@ -12,7 +12,6 @@ if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 const sqlite = new Database('./data/ops-sis.db');
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
-runSqliteMigrations(sqlite);
 
 const db = drizzle(sqlite, { schema });
 
@@ -90,6 +89,9 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+// Pastikan tabel dasar sudah ada sebelum ALTER TABLE idempotent dijalankan.
+runSqliteMigrations(sqlite);
 
 const hash = (pw: string) => hashSync(pw, 10);
 

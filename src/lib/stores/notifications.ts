@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { showToast } from '$lib/client/toast.svelte';
 
 export interface Notification {
 	id: string;
@@ -19,6 +20,13 @@ function createNotificationStore() {
 				timestamp: Date.now()
 			};
 			update((n) => [entry, ...n].slice(0, 10));
+			try {
+				const t =
+					notification.type === 'success' ? 'success' : notification.type === 'warning' ? 'error' : 'info';
+				showToast(notification.message, t, 5200);
+			} catch {
+				/* noop: toast module may be unavailable in rare SSR contexts */
+			}
 			setTimeout(() => {
 				update((n) => n.filter((item) => item.id !== entry.id));
 			}, 6000);

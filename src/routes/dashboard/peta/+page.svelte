@@ -1,11 +1,15 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import SatwilFilter from '$lib/components/SatwilFilter.svelte';
 	import { POLSEK_MAP_LOCK_RADIUS_M } from '$lib/geo-constants';
+	import { installThemedRasterBaseLayer } from '$lib/client/leaflet-themed-tiles';
 
 	let { data } = $props();
 
+	let mapShell: HTMLDivElement | undefined = $state();
+	let mapFullscreen = $state(false);
 	let mapContainer: HTMLDivElement;
 	let map: import('leaflet').Map | undefined;
 	let Lref: typeof import('leaflet') | undefined;
@@ -270,6 +274,7 @@
 
 	onMount(() => {
 		let destroyed = false;
+		let teardownThemedBase: (() => void) | undefined;
 		void (async () => {
 			const leaflet = await import('leaflet');
 			await import('leaflet.markercluster');
@@ -290,10 +295,7 @@
 				map = L.map(mapContainer).setView([-9.6, 123.9], 7);
 			}
 
-			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-				attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
-				maxZoom: 19
-			}).addTo(map);
+			teardownThemedBase = installThemedRasterBaseLayer(L, map);
 
 			const mcg = (
 				L as unknown as {
@@ -332,6 +334,7 @@
 
 		return () => {
 			destroyed = true;
+			teardownThemedBase?.();
 			map?.remove();
 			map = undefined;
 			Lref = undefined;
@@ -383,6 +386,79 @@
 		void tacticRadiusMStr;
 		void tacticalRoute;
 		if (mapReady) updateTacticalOverlay();
+	});
+
+	function isMapShellFullscreen(): boolean {
+		if (typeof document === 'undefined' || !mapShell) return false;
+		const doc = document as Document & { webkitFullscreenElement?: Element | null };
+		return (
+			document.fullscreenElement === mapShell || doc.webkitFullscreenElement === mapShell
+		);
+	}
+
+	function toggleMapFullscreen() {
+		const el = mapShell;
+		if (!el || typeof document === 'undefined') return;
+		const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> };
+		const hel = el as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+		void (async () => {
+			try {
+				if (!isMapShellFullscreen()) {
+					if (el.requestFullscreen) await el.requestFullscreen();
+					else if (hel.webkitRequestFullscreen) await hel.webkitRequestFullscreen();
+				} else {
+					if (document.exitFullscreen) await document.exitFullscreen();
+					else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
+				}
+			} catch {
+				/* izin ditolak / tidak didukung */
+			} finally {
+				bumpMapResize();
+			}
+		})();
+	}
+
+	function bumpMapResize() {
+		if (!map) return;
+		const inv = () => map?.invalidateSize({ animate: false });
+		queueMicrotask(inv);
+		requestAnimationFrame(() => {
+			inv();
+			requestAnimationFrame(inv);
+		});
+		setTimeout(inv, 50);
+		setTimeout(inv, 150);
+		setTimeout(inv, 400);
+		setTimeout(inv, 800);
+	}
+
+	function scheduleMapResize() {
+		bumpMapResize();
+	}
+
+	$effect(() => {
+		if (!browser) return;
+		const onFs = () => {
+			mapFullscreen = isMapShellFullscreen();
+			scheduleMapResize();
+		};
+		document.addEventListener('fullscreenchange', onFs);
+		document.addEventListener('webkitfullscreenchange', onFs as EventListener);
+		return () => {
+			document.removeEventListener('fullscreenchange', onFs);
+			document.removeEventListener('webkitfullscreenchange', onFs as EventListener);
+		};
+	});
+
+	/** Leaflet perlu invalidateSize saat kontainer fullscreen / resize — hindari peta “putih” (0×0). */
+	$effect(() => {
+		if (!browser || !mapReady || !mapShell || !map) return;
+		const leafletMap = map;
+		const ro = new ResizeObserver(() => {
+			leafletMap.invalidateSize({ animate: false });
+		});
+		ro.observe(mapShell);
+		return () => ro.disconnect();
 	});
 </script>
 
@@ -441,8 +517,28 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2">
+			<button
+				type="button"
+				onclick={toggleMapFullscreen}
+				class="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/60"
+				aria-pressed={mapFullscreen}
+				aria-label={mapFullscreen ? 'Keluar layar penuh peta' : 'Layar penuh peta'}
+				title={mapFullscreen ? 'Keluar layar penuh (Esc)' : 'Layar penuh peta'}
+			>
+				{#if mapFullscreen}
+					<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+					</svg>
+					Keluar layar penuh
+				{:else}
+					<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+					</svg>
+					Layar penuh
+				{/if}
+			</button>
 			{#if isPolsek}
-				<label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium">
+				<label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium">
 					<input type="checkbox" bind:checked={showPatrolMandatory} class="rounded border-input" />
 					Layer radius patroli (250m–1km)
 				</label>
@@ -496,10 +592,32 @@
 
 	<div class="grid gap-4 lg:grid-cols-3">
 		<div class="relative z-0 min-h-0 min-w-0 lg:col-span-2">
-			<div class="overflow-hidden rounded-xl border border-border shadow-sm">
+			<div
+				bind:this={mapShell}
+				class="peta-map-shell relative overflow-hidden rounded-xl border border-border bg-background shadow-sm"
+			>
+				<div class="pointer-events-none absolute right-2 top-2 z-[1100]">
+					<button
+						type="button"
+						onclick={toggleMapFullscreen}
+						class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-md hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+						aria-label={mapFullscreen ? 'Keluar layar penuh' : 'Layar penuh'}
+						title={mapFullscreen ? 'Keluar layar penuh' : 'Layar penuh'}
+					>
+						{#if mapFullscreen}
+							<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+							</svg>
+						{:else}
+							<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+							</svg>
+						{/if}
+					</button>
+				</div>
 				<div
 					bind:this={mapContainer}
-					class="h-[50vh] w-full md:h-[65vh]"
+					class="peta-map-canvas w-full min-h-[240px] h-[50vh] md:h-[65vh]"
 				></div>
 			</div>
 		</div>
@@ -528,32 +646,32 @@
 					>
 						<div class="grid grid-cols-2 gap-2">
 							<div>
-								<label for="lat" class="mb-1 block text-xs font-medium text-muted-foreground">Latitude</label>
+								<label for="lat" class="mb-1 block text-sm font-medium text-muted-foreground">Latitude</label>
 								<input
 									id="lat"
 									name="lat"
 									type="number"
 									step="0.0001"
 									bind:value={selectedLat}
-									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+									class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 								/>
 							</div>
 							<div>
-								<label for="lng" class="mb-1 block text-xs font-medium text-muted-foreground">Longitude</label>
+								<label for="lng" class="mb-1 block text-sm font-medium text-muted-foreground">Longitude</label>
 								<input
 									id="lng"
 									name="lng"
 									type="number"
 									step="0.0001"
 									bind:value={selectedLng}
-									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+									class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 								/>
 							</div>
 						</div>
 
 						<div class="grid grid-cols-2 gap-2">
 							<div>
-								<label for="radius_m" class="mb-1 block text-xs font-medium text-muted-foreground">Radius (meter)</label>
+								<label for="radius_m" class="mb-1 block text-sm font-medium text-muted-foreground">Radius (meter)</label>
 								<input
 									id="radius_m"
 									name="radius_m"
@@ -562,17 +680,17 @@
 									max="5000"
 									step="10"
 									bind:value={polresRadiusM}
-									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+									class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 								/>
-								<p class="mt-1 text-[10px] text-muted-foreground">Dipakai otomatis sebagai radius titik rawan (tanpa menu).</p>
+								<p class="mt-1 text-xs text-muted-foreground">Dipakai otomatis sebagai radius titik rawan (tanpa menu).</p>
 							</div>
 							<div>
-								<label for="jumlah_jenis" class="mb-1 block text-xs font-medium text-muted-foreground">Ada berapa jenis kejahatan</label>
+								<label for="jumlah_jenis" class="mb-1 block text-sm font-medium text-muted-foreground">Ada berapa jenis kejahatan</label>
 								<select
 									id="jumlah_jenis"
 									name="jumlah_jenis"
 									bind:value={jumlahJenis}
-									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+									class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 								>
 									{#each Array.from({ length: 10 }, (_, i) => i + 1) as n}
 										<option value={n}>{n}</option>
@@ -596,13 +714,13 @@
 									{#if crimeSectionsOpen[idx]}
 										<div class="space-y-2 border-t border-border px-3 py-3">
 											<div>
-												<label for={"jenis_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">Jenis Kejahatan</label>
+												<label for={"jenis_" + idx} class="mb-1 block text-xs font-medium text-muted-foreground">Jenis Kejahatan</label>
 												<select
 													id={"jenis_" + idx}
 													name={"jenis_kejahatan_" + (idx + 1)}
 													bind:value={crimeJenis[idx]}
 													required
-													class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+													class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 												>
 													{#each crimeTypes.filter((x) => x !== 'Kerumunan') as jenis}
 														<option value={jenis}>{jenis}</option>
@@ -612,7 +730,7 @@
 
 											{#if crimeJenis[idx] === 'Lainnya'}
 												<div>
-													<label for={"jenis_lainnya_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">
+													<label for={"jenis_lainnya_" + idx} class="mb-1 block text-xs font-medium text-muted-foreground">
 														Jenis kejahatan (lainnya)
 													</label>
 													<input
@@ -621,7 +739,7 @@
 														type="text"
 														required
 														bind:value={crimeJenisLainnya[idx]}
-														class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+														class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 														placeholder="Contoh: Pemalakan, Perjudian, dll"
 													/>
 												</div>
@@ -629,7 +747,7 @@
 
 											<div class="grid grid-cols-2 gap-2">
 												<div>
-													<label for={"frek_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">Frekuensi</label>
+													<label for={"frek_" + idx} class="mb-1 block text-xs font-medium text-muted-foreground">Frekuensi</label>
 													<input
 														id={"frek_" + idx}
 														name={"frekuensi_" + (idx + 1)}
@@ -637,24 +755,24 @@
 														min="1"
 														step="1"
 														bind:value={crimeFrekuensi[idx]}
-														class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+														class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 													/>
 												</div>
 												<div class="flex items-end">
-													<p class="text-[10px] text-muted-foreground">
+													<p class="text-xs text-muted-foreground">
 														Estimasi kejadian / periode input.
 													</p>
 												</div>
 											</div>
 
 											<div>
-												<label for={"ket_" + idx} class="mb-1 block text-[11px] font-medium text-muted-foreground">Keterangan</label>
+												<label for={"ket_" + idx} class="mb-1 block text-xs font-medium text-muted-foreground">Keterangan</label>
 												<textarea
 													id={"ket_" + idx}
 													name={"keterangan_" + (idx + 1)}
 													rows="2"
 													bind:value={crimeKeterangan[idx]}
-													class="flex w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm"
+													class="flex w-full rounded-md border border-input bg-background px-2.5 py-2 text-base"
 													placeholder="Deskripsi singkat lokasi/kejadian..."
 												></textarea>
 											</div>
@@ -666,7 +784,7 @@
 
 						<button
 							type="submit"
-							class="flex h-9 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground"
+							class="flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 text-base font-medium text-primary-foreground"
 						>
 							Simpan Titik
 						</button>
@@ -700,30 +818,32 @@
 					>
 						<div class="grid grid-cols-2 gap-2">
 							<div>
-								<label class="mb-1 block text-xs font-medium text-muted-foreground">Latitude</label>
+								<label for="polsek-lat" class="mb-1 block text-sm font-medium text-muted-foreground">Latitude</label>
 								<input
+									id="polsek-lat"
 									name="lat"
 									type="number"
 									step="0.0001"
 									bind:value={selectedLat}
-									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+									class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 								/>
 							</div>
 							<div>
-								<label class="mb-1 block text-xs font-medium text-muted-foreground">Longitude</label>
+								<label for="polsek-lng" class="mb-1 block text-sm font-medium text-muted-foreground">Longitude</label>
 								<input
+									id="polsek-lng"
 									name="lng"
 									type="number"
 									step="0.0001"
 									bind:value={selectedLng}
-									class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+									class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base"
 								/>
 							</div>
 						</div>
 
 						<div>
-							<label class="mb-1 block text-xs font-medium text-muted-foreground">Jenis temuan</label>
-							<select name="jenis_kejahatan" required class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm">
+							<label for="polsek-jenis" class="mb-1 block text-sm font-medium text-muted-foreground">Jenis temuan</label>
+							<select id="polsek-jenis" name="jenis_kejahatan" required class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base">
 								{#each crimeTypes as type}
 									<option value={type}>{type}</option>
 								{/each}
@@ -731,16 +851,16 @@
 						</div>
 
 						<div>
-							<label class="mb-1 block text-xs font-medium text-muted-foreground">Frekuensi / estimasi</label>
-							<input name="frekuensi" type="number" min="1" value="1" class="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm" />
+							<label for="polsek-frek" class="mb-1 block text-sm font-medium text-muted-foreground">Frekuensi / estimasi</label>
+							<input id="polsek-frek" name="frekuensi" type="number" min="1" value="1" class="flex h-11 w-full rounded-md border border-input bg-background px-2.5 text-base" />
 						</div>
 
 						<div>
-							<label class="mb-1 block text-xs font-medium text-muted-foreground">Keterangan singkat</label>
-							<textarea name="keterangan" rows="2" class="flex w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm"></textarea>
+							<label for="polsek-ket" class="mb-1 block text-sm font-medium text-muted-foreground">Keterangan singkat</label>
+							<textarea id="polsek-ket" name="keterangan" rows="2" class="flex w-full rounded-md border border-input bg-background px-2.5 py-2 text-base"></textarea>
 						</div>
 
-						<button type="submit" class="flex h-9 w-full items-center justify-center rounded-lg bg-amber-600 text-sm font-medium text-white">
+						<button type="submit" class="flex min-h-11 w-full items-center justify-center rounded-lg bg-amber-600 px-4 text-base font-medium text-white">
 							Simpan temuan
 						</button>
 					</form>
@@ -773,7 +893,7 @@
 					<select
 						id="tactical-radius"
 						bind:value={tacticRadiusMStr}
-						class="mt-1 h-9 w-full rounded-lg border border-violet-200 bg-white px-2 text-sm"
+						class="mt-1 h-11 w-full rounded-lg border border-violet-200 bg-background px-2 text-base"
 					>
 						<option value="250">250 m</option>
 						<option value="500">500 m</option>
@@ -788,14 +908,14 @@
 					</select>
 					<button
 						type="button"
-						class="mt-3 h-9 w-full rounded-lg bg-violet-700 text-sm font-semibold text-white disabled:opacity-50"
+						class="mt-3 min-h-11 w-full rounded-lg bg-violet-700 px-4 text-base font-semibold text-white disabled:opacity-50"
 						disabled={tacticalLoading}
 						onclick={() => void fetchTacticalRoute()}
 					>
 						{tacticalLoading ? 'Menghitung rute…' : 'Rute dari lokasi saya (OSRM)'}
 					</button>
 					{#if tacticalErr}
-						<p class="mt-2 text-xs text-red-700">{tacticalErr}</p>
+						<p class="mt-2 text-xs text-red-700 dark:text-red-300">{tacticalErr}</p>
 					{/if}
 					{#if tacticalRoute}
 						<p class="mt-2 text-xs text-violet-900">
@@ -832,12 +952,12 @@
 							rows="3"
 							required
 							minlength="8"
-							class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+							class="w-full rounded-lg border border-input bg-background px-3 py-2 text-base"
 							placeholder="Contoh: laporan warga — balap liar di Jembatan Liliba sekitar jam 02.00."
 						></textarea>
 						<button
 							type="submit"
-							class="h-9 w-full rounded-lg bg-slate-800 text-sm font-medium text-white"
+							class="min-h-11 w-full rounded-lg bg-slate-800 px-4 text-base font-medium text-white dark:bg-slate-700"
 						>
 							Simpan intel sementara
 						</button>
@@ -871,7 +991,7 @@
 					{:else}
 						<ul class="mt-3 max-h-52 space-y-2 overflow-y-auto text-xs">
 							{#each intelList as note (note.id)}
-								<li class="rounded border border-amber-200/80 bg-white/90 px-3 py-2">
+								<li class="rounded border border-amber-200/80 bg-card px-3 py-2 dark:border-amber-900/50">
 									<p class="font-medium text-foreground">{note.polsekNama ?? 'POLSEK'}</p>
 									<p class="text-[10px] text-muted-foreground">
 										{new Date(note.createdAt).toLocaleString('id-ID')}
@@ -955,5 +1075,37 @@
 <style>
 	:global(.leaflet-container) {
 		z-index: 0;
+	}
+
+	/*
+		Fullscreen API: tinggi kontainer harus pasti sebelum Leaflet menggambar tile.
+		:fullscreen dipasang langsung oleh browser (tidak tunggu state Svelte) — mencegah layar putih.
+	*/
+	:global(.peta-map-shell:fullscreen),
+	:global(.peta-map-shell:-webkit-full-screen) {
+		display: flex;
+		flex-direction: column;
+		width: 100vw;
+		max-width: 100vw;
+		height: 100vh;
+		height: 100dvh;
+		max-height: 100dvh;
+		box-sizing: border-box;
+		border-radius: 0;
+		border-width: 0;
+		background: var(--background);
+	}
+	:global(.peta-map-shell:fullscreen .peta-map-canvas),
+	:global(.peta-map-shell:-webkit-full-screen .peta-map-canvas) {
+		flex: 1 1 auto;
+		min-height: 0;
+		width: 100%;
+		height: auto !important;
+	}
+	:global(.peta-map-shell:fullscreen .leaflet-container),
+	:global(.peta-map-shell:-webkit-full-screen .leaflet-container) {
+		height: 100% !important;
+		width: 100%;
+		background: var(--bg);
 	}
 </style>

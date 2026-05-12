@@ -481,7 +481,11 @@
 		role="dialog"
 		aria-modal="true"
 		aria-label="Lapor kejadian menonjol"
-		onclick={() => (showNotableModal = false)}
+		tabindex="-1"
+		onclick={(e) => {
+			// Tutup hanya jika klik backdrop (bukan klik konten modal).
+			if (e.currentTarget === e.target) showNotableModal = false;
+		}}
 		onkeydown={(e) => {
 			if (e.key === 'Escape') showNotableModal = false;
 		}}
@@ -489,8 +493,6 @@
 		<div
 			class="relative w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-xl"
 			role="document"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={() => {}}
 		>
 			<div class="flex items-start justify-between gap-3">
 				<div>

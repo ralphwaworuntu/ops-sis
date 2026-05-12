@@ -38,7 +38,11 @@ export function runSqliteMigrations(sqlite: Database.Database) {
 			sqlite.exec(sql);
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e);
-			if (!msg.includes('duplicate column')) throw e;
+			// Idempotent migrations: ignore when the column already exists or
+			// when running against a fresh DB that doesn't have the table yet.
+			if (msg.includes('duplicate column')) continue;
+			if (msg.includes('no such table')) continue;
+			throw e;
 		}
 	}
 
@@ -54,6 +58,19 @@ export function runSqliteMigrations(sqlite: Database.Database) {
 				ip TEXT NOT NULL,
 				user_agent TEXT,
 				device_id TEXT,
+				created_at TEXT NOT NULL
+			);
+		`);
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : String(e);
+		if (!msg.includes('already exists')) throw e;
+	}
+
+	try {
+		sqlite.exec(`
+			CREATE TABLE IF NOT EXISTS idempotency_keys (
+				key TEXT PRIMARY KEY,
+				state TEXT NOT NULL DEFAULT 'started',
 				created_at TEXT NOT NULL
 			);
 		`);

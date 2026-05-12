@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
+	import { installThemedRasterBaseLayer } from '$lib/client/leaflet-themed-tiles';
 
 	let { data } = $props();
 
@@ -133,8 +134,8 @@
 				<div class=\"incident-wall__tri\">
 					<svg viewBox=\"0 0 24 24\" class=\"incident-wall__icon\" aria-hidden=\"true\">
 						<path d=\"M12 2 1 21h22L12 2z\" fill=\"currentColor\"></path>
-						<path d=\"M12 8v6\" stroke=\"#0f172a\" stroke-width=\"2\" stroke-linecap=\"round\"/>
-						<circle cx=\"12\" cy=\"17\" r=\"1.4\" fill=\"#0f172a\"/>
+						<path d=\"M12 8v6\" stroke=\"rgba(255,255,255,0.95)\" stroke-width=\"2\" stroke-linecap=\"round\"/>
+						<circle cx=\"12\" cy=\"17\" r=\"1.4\" fill=\"rgba(255,255,255,0.95)\"/>
 					</svg>
 				</div>
 			`;
@@ -172,16 +173,14 @@
 
 		let destroyed = false;
 		let pulseTimer: ReturnType<typeof setTimeout> | undefined;
+		let teardownThemedBase: (() => void) | undefined;
 
 		void import('leaflet').then((L) => {
 			if (destroyed || !mapHost) return;
 			mapCtx.L = L;
 			// Default view: Provinsi Nusa Tenggara Timur (NTT)
 			mapCtx.map = L.map(mapHost).setView([-9.6, 123.9], 7);
-			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-				attribution: '&copy; OpenStreetMap',
-				maxZoom: 19
-			}).addTo(mapCtx.map);
+			teardownThemedBase = installThemedRasterBaseLayer(L, mapCtx.map);
 			mapCtx.layer = L.layerGroup().addTo(mapCtx.map);
 			mapCtx.staleLayer = L.layerGroup().addTo(mapCtx.map);
 			mapCtx.incidentLayer = L.layerGroup().addTo(mapCtx.map);
@@ -300,6 +299,7 @@
 			destroyed = true;
 			if (pulseTimer) clearTimeout(pulseTimer);
 			es.close();
+			teardownThemedBase?.();
 			mapCtx.map?.remove();
 			mapCtx.map = null;
 			mapCtx.layer = null;

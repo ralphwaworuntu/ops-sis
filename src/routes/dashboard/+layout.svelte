@@ -7,7 +7,12 @@
 	import { activityFeed } from '$lib/stores/activity-feed';
 	import { lhpOutboxCount, refreshLhpOutboxCount } from '$lib/stores/lhp-outbox-status';
 	import { syncOutbox } from '$lib/client/lhp-outbox';
+	import Header from '$lib/components/layout/Header.svelte';
+	import AppLogo from '$lib/components/branding/AppLogo.svelte';
+	import Toast from '$lib/components/ui/Toast.svelte';
+	import { getToastVersion, getToasts } from '$lib/client/toast.svelte';
 	import type { Snippet } from 'svelte';
+	import type { ToastItem as UiToastItem } from '$lib/client/toast.svelte';
 
 	let { data, children }: { data: { user: NonNullable<App.Locals['user']> }; children: Snippet } =
 		$props();
@@ -15,11 +20,9 @@
 	let sidebarOpen = $state(false);
 	/** Di lg+, sembunyikan sidebar kiri agar konten melebar (toggle lewat navbar). */
 	let desktopSidebarCollapsed = $state(false);
-	let toasts: { id: string; type: string; message: string }[] = $state([]);
+	let uiToasts = $state<UiToastItem[]>([]);
 	let online = $state(typeof navigator !== 'undefined' ? navigator.onLine : true);
 	let outboxPending = $state(0);
-
-	notifications.subscribe((n) => (toasts = n));
 
 	onMount(() => {
 		online = navigator.onLine;
@@ -125,6 +128,15 @@
 		};
 	});
 
+	$effect(() => {
+		void getToastVersion();
+		uiToasts = getToasts();
+	});
+
+	const isPolsekGiatSaya = $derived(
+		data.user.role === 'POLSEK' && $page.url.pathname.startsWith('/dashboard/giat-saya')
+	);
+
 	const navItems = $derived(getNavItems(data.user.role));
 
 	function getNavItems(role: string) {
@@ -187,6 +199,10 @@
 		}
 	}
 
+	const activeNavClass =
+		'bg-[var(--primary)]/10 text-[var(--primary)] border-l-2 border-[var(--primary)]';
+	const inactiveNavClass = 'text-[var(--text)] hover:bg-[var(--border)]/25';
+
 	const roleBadgeColor: Record<string, string> = {
 		'KARO OPS': 'bg-accent text-accent-foreground',
 		POLDA: 'bg-primary text-primary-foreground',
@@ -207,14 +223,10 @@
 			: 'lg:w-64'}"
 		aria-hidden={desktopSidebarCollapsed ? 'true' : 'false'}
 	>
-		<div class="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
-			<div
-				class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground"
-			>
-				SIS
-			</div>
-			<div>
-				<h2 class="text-sm font-semibold text-sidebar-foreground">OPS — SIS</h2>
+		<div class="flex h-16 items-center gap-2 border-b border-sidebar-border px-3">
+			<AppLogo size="sidebar" class="shrink-0 rounded-lg" />
+			<div class="min-w-0 flex-1">
+				<h2 class="truncate text-sm font-semibold text-sidebar-foreground">OPS — SIS</h2>
 				<p class="text-[11px] text-muted-foreground">Strategi Operasional</p>
 			</div>
 		</div>
@@ -224,9 +236,10 @@
 				{@const active = isActive(item.href, $page.url.pathname)}
 				<a
 					href={item.href}
+					title={item.label}
 					class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {active
-						? 'bg-sidebar-primary text-sidebar-primary-foreground'
-						: 'text-sidebar-foreground hover:bg-sidebar-accent'}"
+						? activeNavClass
+						: inactiveNavClass}"
 				>
 					<svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 						<path stroke-linecap="round" stroke-linejoin="round" d={iconMap[item.icon]} />
@@ -276,9 +289,7 @@
 			<aside class="absolute inset-y-0 left-0 w-72 border-r border-sidebar-border bg-sidebar shadow-xl">
 				<div class="flex h-16 items-center justify-between border-b border-sidebar-border px-5">
 					<div class="flex items-center gap-3">
-						<div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-							SIS
-						</div>
+						<AppLogo size="sidebar" class="shrink-0 rounded-lg" />
 						<h2 class="text-sm font-semibold text-sidebar-foreground">OPS — SIS</h2>
 					</div>
 					<button onclick={() => (sidebarOpen = false)} class="rounded-lg p-1.5 text-muted-foreground hover:bg-muted" aria-label="Tutup menu">
@@ -295,8 +306,8 @@
 							href={item.href}
 							onclick={() => (sidebarOpen = false)}
 							class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {active
-								? 'bg-sidebar-primary text-sidebar-primary-foreground'
-								: 'text-sidebar-foreground hover:bg-sidebar-accent'}"
+								? activeNavClass
+								: inactiveNavClass}"
 						>
 							<svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 								<path stroke-linecap="round" stroke-linejoin="round" d={iconMap[item.icon]} />
@@ -333,53 +344,52 @@
 
 	<!-- Main content -->
 	<div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-		<header class="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
-			<button
-				type="button"
-				onclick={toggleSidebar}
-				class="rounded-lg p-1.5 text-foreground hover:bg-muted"
-				aria-label="Buka atau tutup menu sidebar"
-			>
-				<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-				</svg>
-			</button>
-			<div class="flex min-w-0 items-center gap-2">
-				<div
-					class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground"
+		<Header sticky={false}>
+			{#snippet leading()}
+				<button
+					type="button"
+					onclick={toggleSidebar}
+					class="rounded-lg p-2 text-[var(--text)] hover:bg-[var(--border)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+					aria-label="Buka atau tutup menu sidebar"
 				>
-					SIS
+					<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+					</svg>
+				</button>
+				<div class="flex min-w-0 items-center gap-2">
+					<AppLogo size="sm" class="shrink-0 rounded-md" />
+					<span class="hidden truncate text-sm font-semibold text-[var(--text)] sm:inline">OPS — SIS</span>
 				</div>
-				<span class="truncate text-sm font-semibold">OPS — SIS</span>
-			</div>
-			<div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+			{/snippet}
+
+			{#snippet trailing()}
 				<span
-					class="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide {online
-						? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-						: 'border-amber-200 bg-amber-50 text-amber-900'}"
+					class="rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide {online
+						? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-100'
+						: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100'}"
 					aria-live="polite"
 				>
 					{online ? 'Online' : 'Offline'}
 				</span>
 				{#if data.user.role === 'POLSEK' && outboxPending > 0}
 					<span
-						class="hidden rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-950 sm:inline"
+						class="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
 					>
 						{outboxPending} antre
 					</span>
 				{/if}
-				<span
-					class="inline-flex max-w-[8rem] truncate rounded px-1.5 py-0.5 text-[10px] font-semibold sm:max-w-none {roleBadgeColor[
-						data.user.role
-					]}"
-				>
+				<span class="inline-flex max-w-[10rem] truncate rounded px-2 py-0.5 text-xs font-semibold sm:max-w-none {roleBadgeColor[data.user.role]}">
 					{data.user.role}
 				</span>
-			</div>
-		</header>
+			{/snippet}
+		</Header>
 
 		<!-- Page content -->
-		<main class="relative flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+		<main
+			class="relative flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-24 lg:p-8 lg:pb-24 {isPolsekGiatSaya
+				? 'pb-32 md:pb-32 lg:pb-32'
+				: ''}"
+		>
 			{#if data.user.role === 'POLSEK' && outboxPending > 0}
 				<div class="mb-3 sm:hidden">
 					<span
@@ -392,43 +402,60 @@
 			{@render children()}
 		</main>
 
-		<!-- Mobile bottom nav -->
-		<nav class="flex border-t border-border bg-card lg:hidden">
-			{#each navItems.slice(0, 4) as item}
-				{@const active = isActive(item.href, $page.url.pathname)}
+		{#if isPolsekGiatSaya}
+			<nav
+				class="fixed inset-x-0 bottom-0 z-40 flex border-t border-[var(--border)] bg-[var(--surface)]/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur md:hidden"
+				aria-label="Aksi cepat POLSEK"
+			>
 				<a
-					href={item.href}
-					class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors {active
-						? 'text-primary'
-						: 'text-muted-foreground'}"
+					href="/dashboard/giat-saya"
+					class="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold text-[var(--text)]"
 				>
-					<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width={active ? 2 : 1.5}>
-						<path stroke-linecap="round" stroke-linejoin="round" d={iconMap[item.icon]} />
-					</svg>
-					{item.label.split(' ')[0]}
+					<span class="text-lg" aria-hidden="true">📍</span>
+					Giat
 				</a>
-			{/each}
-		</nav>
+				<a
+					href="/dashboard"
+					class="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold text-[var(--text)]"
+				>
+					<span class="text-lg" aria-hidden="true">📤</span>
+					Lapor
+				</a>
+				<a
+					href="/dashboard/giat-saya#failed-outbox"
+					class="relative flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold text-[var(--text)]"
+				>
+					<span class="text-lg" aria-hidden="true">📦</span>
+					Outbox
+					{#if outboxPending > 0}
+						<span
+							class="absolute right-5 top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white"
+						>
+							{outboxPending > 9 ? '9+' : outboxPending}
+						</span>
+					{/if}
+				</a>
+			</nav>
+		{:else}
+			<!-- Mobile bottom nav -->
+			<nav class="flex border-t border-border bg-card lg:hidden">
+				{#each navItems.slice(0, 4) as item}
+					{@const active = isActive(item.href, $page.url.pathname)}
+					<a
+						href={item.href}
+						class="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 py-2 text-xs font-medium transition-colors {active
+							? 'text-primary'
+							: 'text-muted-foreground'}"
+					>
+						<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width={active ? 2 : 1.5}>
+							<path stroke-linecap="round" stroke-linejoin="round" d={iconMap[item.icon]} />
+						</svg>
+						{item.label.split(' ')[0]}
+					</a>
+				{/each}
+			</nav>
+		{/if}
 	</div>
 
-	<!-- Toast Notifications -->
-	{#if toasts.length > 0}
-		<div class="fixed bottom-20 right-4 z-50 flex flex-col gap-2 lg:bottom-6 lg:right-6">
-			{#each toasts as toast (toast.id)}
-				<div
-					class="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-lg animate-in slide-in-from-right"
-				>
-					<svg class="h-5 w-5 shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-					</svg>
-					<p class="text-sm font-medium text-emerald-800">{toast.message}</p>
-					<button onclick={() => notifications.dismiss(toast.id)} class="ml-2 text-emerald-400 hover:text-emerald-600" aria-label="Tutup notifikasi">
-						<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
-				</div>
-			{/each}
-		</div>
-	{/if}
+	<Toast items={uiToasts} />
 </div>

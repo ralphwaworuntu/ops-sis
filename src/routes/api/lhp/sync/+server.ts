@@ -1,6 +1,10 @@
 import { json, error, isActionFailure } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { submitPolsekActivityReport } from '$lib/server/activity-report';
+import { db } from '$lib/server/db';
+import { idempotencyKeys } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
+import crypto from 'crypto';
 
 type Body = {
 	rengiat_id: number;
@@ -16,6 +20,22 @@ type Body = {
 	captured_at_iso?: string | null;
 };
 
+function stableFallbackIdempotencyKey(deviceId: string, body: Body): string {
+	const h = crypto.createHash('sha256');
+	h.update(deviceId || 'no-device');
+	h.update('|');
+	h.update(String(body.rengiat_id ?? ''));
+	h.update('|');
+	h.update(String(body.captured_at_iso ?? ''));
+	h.update('|');
+	h.update(String(body.deskripsi ?? ''));
+	h.update('|');
+	h.update(String(body.lat ?? ''));
+	h.update('|');
+	h.update(String(body.lng ?? ''));
+	return `sha256_${h.digest('hex')}`;
+}
+
 export const POST: RequestHandler = async (event) => {
 	if (!event.locals.user || event.locals.user.role !== 'POLSEK') {
 		error(403, 'Unauthorized');
@@ -26,6 +46,37 @@ export const POST: RequestHandler = async (event) => {
 		body = (await event.request.json()) as Body;
 	} catch {
 		error(400, 'JSON tidak valid');
+	}
+
+	// Validasi minimal (4xx = permanent fail di client outbox).
+	if (!Number.isFinite(Number(body.rengiat_id)) || !String(body.deskripsi ?? '').trim()) {
+		return json({ error: 'rengiat_id dan deskripsi wajib valid.' }, { status: 400 });
+	}
+
+	const deviceId = event.request.headers.get('x-device-id') ?? '';
+	const rawKey = event.request.headers.get('x-idempotency-key')?.trim() ?? '';
+	const idemKey = rawKey || stableFallbackIdempotencyKey(deviceId, body);
+
+	const existing = db
+		.select({ state: idempotencyKeys.state })
+		.from(idempotencyKeys)
+		.where(eq(idempotencyKeys.key, idemKey))
+		.get();
+	if (existing?.state === 'done') {
+		return json({ ok: true, idempotent: true });
+	}
+	if (existing?.state === 'started') {
+		// Permintaan duplikat saat request pertama masih berjalan.
+		// Anggap temporary; client outbox akan retry.
+		return json({ error: 'Sync sedang diproses, coba lagi.' }, { status: 503 });
+	}
+
+	// Claim idempotency key (race-safe via PK constraint).
+	try {
+		db.insert(idempotencyKeys).values({ key: idemKey, state: 'started' }).run();
+	} catch {
+		// Jika constraint violation → ada request lain yang sudah claim.
+		return json({ error: 'Sync sedang diproses, coba lagi.' }, { status: 503 });
 	}
 
 	const fd = new FormData();
@@ -48,8 +99,13 @@ export const POST: RequestHandler = async (event) => {
 
 	const result = await submitPolsekActivityReport(event.locals, fd, event);
 	if (isActionFailure(result)) {
+		// Rollback claim supaya bisa dicoba ulang (kecuali error 4xx yang memang permanent di client).
+		db.delete(idempotencyKeys).where(eq(idempotencyKeys.key, idemKey)).run();
 		const failData = result.data as { error?: string } | undefined;
 		return json({ error: failData?.error ?? 'Gagal mengirim laporan' }, { status: result.status });
 	}
-	return json({ ok: true });
+
+	db.update(idempotencyKeys).set({ state: 'done' }).where(eq(idempotencyKeys.key, idemKey)).run();
+	return json({ ok: true }, { status: 201 });
+
 };

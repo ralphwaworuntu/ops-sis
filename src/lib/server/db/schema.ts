@@ -182,6 +182,16 @@ export const auditLogs = sqliteTable('audit_logs', {
 	createdAt: text('created_at').notNull()
 });
 
+/** Idempotency key untuk endpoint sinkronisasi offline (TTL di-manage aplikasi/ops). */
+export const idempotencyKeys = sqliteTable('idempotency_keys', {
+	key: text('key').primaryKey(),
+	/** started -> kunci dibuat; done -> LHP sudah tersimpan */
+	state: text('state', { enum: ['started', 'done'] }).notNull().default('started'),
+	createdAt: text('created_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString())
+});
+
 /** Personil POLSEK sedang giat lapangan (check-in) — Monitoring POLRES via SSE. */
 export const fieldGiatSessions = sqliteTable('field_giat_sessions', {
 	id: integer('id').primaryKey({ autoIncrement: true }),

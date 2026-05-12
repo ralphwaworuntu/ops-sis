@@ -2,6 +2,8 @@
 	import { browser } from '$app/environment';
 	import { enhance } from '$app/forms';
 	import { onMount } from 'svelte';
+	import { installThemedRasterBaseLayer } from '$lib/client/leaflet-themed-tiles';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let { data, form } = $props();
 	let loading = $state(false);
@@ -118,20 +120,19 @@
 	onMount(() => {
 		if (!mapHost) return;
 		let destroyed = false;
+		let teardownThemedBase: (() => void) | undefined;
 		void import('leaflet').then((L) => {
 			if (destroyed || !mapHost) return;
 			mapCtx.L = L;
 			mapCtx.map = L.map(mapHost).setView([-6.2, 106.85], 10);
-			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-				attribution: '&copy; OpenStreetMap',
-				maxZoom: 19
-			}).addTo(mapCtx.map);
+			teardownThemedBase = installThemedRasterBaseLayer(L, mapCtx.map);
 			mapCtx.layer = L.layerGroup().addTo(mapCtx.map);
 			mapReady = true;
 			redrawPointMarkers();
 		});
 		return () => {
 			destroyed = true;
+			teardownThemedBase?.();
 			mapCtx.map?.remove();
 			mapCtx.map = null;
 			mapCtx.layer = null;
@@ -197,7 +198,7 @@
 					required
 					bind:value={kategori}
 					onchange={onKategoriChange}
-					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 				>
 					<option value="Rengiat Harian">Rengiat Harian</option>
 					<option value="Rengiat Penanganan Zona Merah">Rengiat Penanganan Zona Merah</option>
@@ -215,7 +216,7 @@
 					type="text"
 					required
 					value=""
-					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base transition-colors placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 					placeholder="Contoh: Operasi Anti C3 Blok M"
 				/>
 			</div>
@@ -228,7 +229,7 @@
 					required
 					rows="8"
 					bind:value={deskripsi}
-					class="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+					class="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-base transition-colors placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 					placeholder="Jelaskan rencana kegiatan secara detail: tujuan, metode, personil, jadwal..."
 				></textarea>
 				{#if deskripsi && deskripsi === lastBoilerplate}
@@ -247,7 +248,7 @@
 							name="nama_tamu"
 							type="text"
 							required
-							class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+							class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 							placeholder="Nama lengkap tamu VIP/VVIP"
 						/>
 					</div>
@@ -275,7 +276,7 @@
 							<select
 								id="tingkat_kerawanan"
 								name="tingkat_kerawanan"
-								class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+								class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 							>
 								<option value="High" selected>High</option>
 								<option value="Medium">Medium</option>
@@ -289,7 +290,7 @@
 							id="analisa_singkat_ancaman"
 							name="analisa_singkat_ancaman"
 							rows="3"
-							class="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+							class="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 							placeholder="Uraian singkat analisa ancaman di zona merah ini..."
 						></textarea>
 					</div>
@@ -383,7 +384,7 @@
 					min="0"
 					step="1"
 					value="0"
-					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+					class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
 				/>
 				<p class="text-xs text-muted-foreground">
 					Target titik/kegiatan terploting yang direncanakan (untuk dibandingkan dengan laporan lapangan).
@@ -397,30 +398,26 @@
 				</p>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<div>
-						<label for="anchor_lat" class="text-xs font-medium text-muted-foreground">Latitude</label>
-						<input id="anchor_lat" name="anchor_lat" type="text" inputmode="decimal" placeholder="-6.261500" class="mt-1 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+						<label for="anchor_lat" class="text-sm font-medium text-muted-foreground">Latitude</label>
+						<input id="anchor_lat" name="anchor_lat" type="text" inputmode="decimal" placeholder="-6.261500" class="mt-1 flex h-11 w-full rounded-lg border border-input bg-background px-3 text-base" />
 					</div>
 					<div>
-						<label for="anchor_lng" class="text-xs font-medium text-muted-foreground">Longitude</label>
-						<input id="anchor_lng" name="anchor_lng" type="text" inputmode="decimal" placeholder="106.781600" class="mt-1 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+						<label for="anchor_lng" class="text-sm font-medium text-muted-foreground">Longitude</label>
+						<input id="anchor_lng" name="anchor_lng" type="text" inputmode="decimal" placeholder="106.781600" class="mt-1 flex h-11 w-full rounded-lg border border-input bg-background px-3 text-base" />
 					</div>
 				</div>
 			</div>
 
 			<div class="space-y-2">
 				<label for="operasi_selesai" class="text-sm font-medium text-foreground">Batas waktu operasi (opsional)</label>
-				<input id="operasi_selesai" name="operasi_selesai" type="datetime-local" class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" />
+				<input id="operasi_selesai" name="operasi_selesai" type="datetime-local" class="flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base" />
 				<p class="text-xs text-muted-foreground">Dipakai POLSEK untuk indikator &quot;LHP tertunda&quot; setelah jadwal berakhir.</p>
 			</div>
 
 			<div class="flex gap-3">
-				<button
-					type="submit"
-					disabled={loading}
-					class="flex h-11 flex-1 items-center justify-center rounded-lg bg-primary font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50"
-				>
-					{loading ? 'Menyimpan...' : 'Simpan sebagai Draf'}
-				</button>
+				<Button type="submit" variant="primary" size="lg" class="flex-1" disabled={loading} loading={loading}>
+					Simpan sebagai Draf
+				</Button>
 			</div>
 		</form>
 	</div>

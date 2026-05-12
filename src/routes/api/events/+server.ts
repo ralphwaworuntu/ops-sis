@@ -1,24 +1,64 @@
 import type { RequestHandler } from './$types';
 import { sseBroadcaster } from '$lib/server/sse';
+import { incCounter } from '$lib/server/telemetry';
 
-export const GET: RequestHandler = async ({ locals }) => {
+const MAX_BUFFER = 50;
+
+export const GET: RequestHandler = async ({ locals, request, getClientAddress }) => {
 	if (!locals.user) {
 		return new Response('Unauthorized', { status: 401 });
 	}
 
+	const userId = locals.user.id;
+	const ip = (() => {
+		try {
+			return getClientAddress();
+		} catch {
+			return 'unknown';
+		}
+	})();
+
 	const stream = new ReadableStream({
 		start(controller) {
 			const encoder = new TextEncoder();
+			const buffer: string[] = [];
+			let flushing = false;
+			let closed = false;
 
-			const send = (data: string) => {
+			const log = (msg: string) => console.log(`[SSE] ${msg}`);
+			const warn = (msg: string) => console.warn(`[SSE] ${msg}`);
+
+			const flush = () => {
+				if (flushing || closed) return;
+				flushing = true;
 				try {
-					controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+					while (buffer.length > 0) {
+						const data = buffer.shift()!;
+						controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+					}
 				} catch {
-					unsubscribe();
+					// enqueue gagal → client kemungkinan disconnect
+					cleanup('enqueue-failed');
+				} finally {
+					flushing = false;
 				}
 			};
 
-			send(JSON.stringify({ type: 'connected', data: { userId: locals.user!.id } }));
+			const send = (data: string) => {
+				if (closed) return;
+				// Buffer per client untuk burst event.
+				buffer.push(data);
+				if (buffer.length > MAX_BUFFER) {
+					const dropped = buffer.splice(0, buffer.length - MAX_BUFFER);
+					incCounter('buffer_dropped', dropped.length);
+					warn(`BufferFull user=${userId} ip=${ip} dropped=${dropped.length}`);
+				}
+				flush();
+			};
+
+			incCounter('sse_connected');
+			log(`Connected user=${userId} ip=${ip} listeners=${sseBroadcaster.count() + 1}`);
+			send(JSON.stringify({ type: 'connected', data: { userId } }));
 
 			const unsubscribe = sseBroadcaster.subscribe((event) => {
 				send(JSON.stringify(event));
@@ -28,15 +68,35 @@ export const GET: RequestHandler = async ({ locals }) => {
 				try {
 					controller.enqueue(encoder.encode(': keepalive\n\n'));
 				} catch {
-					clearInterval(keepalive);
-					unsubscribe();
+					cleanup('keepalive-failed');
 				}
 			}, 30000);
 
-			return () => {
-				clearInterval(keepalive);
-				unsubscribe();
+			const onAbort = () => cleanup('abort');
+			request.signal.addEventListener('abort', onAbort);
+
+			const cleanup = (reason: string) => {
+				if (closed) return;
+				closed = true;
+				try {
+					clearInterval(keepalive);
+					unsubscribe();
+				} finally {
+					request.signal.removeEventListener('abort', onAbort);
+					try {
+						controller.close();
+					} catch {
+						/* noop */
+					}
+					incCounter('sse_disconnected');
+					log(`Disconnected user=${userId} ip=${ip} reason=${reason} listeners=${sseBroadcaster.count()}`);
+				}
 			};
+
+			// cancel() dipanggil saat client menutup stream.
+			// (SvelteKit/ReadableStream akan memanggil return function dari start() jika disediakan,
+			// tapi kita tetap explicit lewat cleanup via abort+exception.)
+			return () => cleanup('cancel');
 		}
 	});
 

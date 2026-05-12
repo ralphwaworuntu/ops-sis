@@ -39,6 +39,10 @@ class SSEBroadcaster {
 			}
 		}
 	}
+
+	count(): number {
+		return this.listeners.size;
+	}
 }
 
 export const sseBroadcaster = new SSEBroadcaster();

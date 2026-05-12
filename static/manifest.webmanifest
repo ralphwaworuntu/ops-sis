@@ -6,9 +6,19 @@
 	"display": "standalone",
 	"background_color": "#0f172a",
 	"theme_color": "#1e3a8a",
+	"scope": "/",
+	"lang": "id",
+	"orientation": "portrait-primary",
+	"categories": ["business", "productivity"],
 	"icons": [
 		{
-			"src": "/favicon.png",
+			"src": "/LOGO_OPS-SIS.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/LOGO_OPS-SIS.png",
 			"sizes": "192x192",
 			"type": "image/png",
 			"purpose": "any"

@@ -23,11 +23,16 @@ export const actions: Actions = {
 			return fail(401, { error: 'Username atau password salah.', username });
 		}
 
+		const isProd = process.env.NODE_ENV === 'production';
 		cookies.set('session', result.sessionId, {
 			path: '/',
 			httpOnly: true,
+			// sameSite:
+			// - 'lax' menjaga cookie tetap terkirim pada navigasi normal (paling kompatibel untuk app web).
+			// - gunakan 'strict' bila tidak ada kebutuhan cross-site sama sekali.
 			sameSite: 'lax',
-			secure: false, // HTTP di LAN; set true jika pakai HTTPS
+			// secure harus true di HTTPS (production). Di dev LAN (HTTP) harus false agar cookie tersimpan.
+			secure: isProd,
 			maxAge: 60 * 60 * 24 * 7
 		});
 

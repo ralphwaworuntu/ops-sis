@@ -2,10 +2,17 @@
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import SatwilFilter from '$lib/components/SatwilFilter.svelte';
+	import Header from '$lib/components/layout/Header.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import Table from '$lib/components/ui/Table.svelte';
+	import Skeleton from '$lib/components/ui/Skeleton.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
+	import { showToast } from '$lib/client/toast.svelte';
 
 	let { data } = $props();
 
 	let showPointModal = $state<number | null>(null);
+	let comparisonsLoading = $state(true);
 
 	const modalPoint = $derived(
 		showPointModal != null ? data.vulnPointsMap?.[showPointModal] ?? null : null
@@ -35,6 +42,21 @@
 		const t = setInterval(() => void invalidateAll(), 60000);
 		return () => clearInterval(t);
 	});
+
+	onMount(() => {
+		// Proof-of-concept skeleton state (client-only) — tidak mengubah data server.
+		const id = window.setTimeout(() => {
+			comparisonsLoading = false;
+		}, 450);
+		return () => window.clearTimeout(id);
+	});
+
+	function demoBulkVerifyToast() {
+		// Proof-of-concept: memicu toast sukses/gagal tanpa action server di halaman ini.
+		const ok = Math.random() > 0.35;
+		if (ok) showToast('Bulk verify (demo): berhasil memproses batch.', 'success');
+		else showToast('Bulk verify (demo): gagal — coba lagi.', 'error');
+	}
 </script>
 
 <svelte:head>
@@ -42,6 +64,32 @@
 </svelte:head>
 
 <div class="space-y-6">
+	<Header sticky={true}>
+		{#snippet breadcrumbs()}
+			<ol class="flex flex-wrap items-center gap-2">
+				<li>
+					<a class="text-[var(--primary)] hover:underline" href="/dashboard">Dashboard</a>
+				</li>
+				<li class="text-[var(--text-muted)]" aria-hidden="true">/</li>
+				<li class="font-medium text-[var(--text)]">Monitoring</li>
+			</ol>
+		{/snippet}
+		{#snippet search()}
+			<label class="sr-only" for="monitoring-search">Cari monitoring</label>
+			<input
+				id="monitoring-search"
+				class="h-11 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] px-3 text-base text-[var(--text)] placeholder:text-[var(--text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+				placeholder="Cari… (placeholder)"
+				disabled
+			/>
+		{/snippet}
+		{#snippet actions()}
+			<Button variant="secondary" size="sm" type="button" onclick={demoBulkVerifyToast}>
+				Demo bulk verify toast
+			</Button>
+		{/snippet}
+	</Header>
+
 	<div class="flex flex-col gap-3">
 		<div>
 			<h1 class="text-xl font-bold tracking-tight text-foreground md:text-2xl">Monitoring</h1>
@@ -171,49 +219,66 @@
 		{/if}
 
 		<!-- Rencana vs realisasi -->
-		<div class="rounded-xl border border-border bg-card shadow-sm">
-			<div class="border-b border-border px-4 py-3">
-				<h2 class="text-sm font-semibold text-foreground">Rencana vs realisasi (Rengiat disetujui)</h2>
-				<p class="text-xs text-muted-foreground">
-					Status hijau: realisasi memenuhi target plotting dan minimal satu laporan ditandai sebagai bukti lapangan.
-				</p>
-			</div>
-			<div class="overflow-x-auto">
-				{#if data.comparisons.length === 0}
-					<p class="px-4 py-8 text-center text-sm text-muted-foreground">
-						Tidak ada Rengiat disetujui untuk filter ini.
+		<Card>
+			{#snippet header()}
+				<div>
+					<h2 class="text-sm font-semibold text-[var(--text)]">Rencana vs realisasi (Rengiat disetujui)</h2>
+					<p class="text-xs text-[var(--text-muted)]">
+						Status hijau: realisasi memenuhi target plotting dan minimal satu laporan ditandai sebagai bukti lapangan.
 					</p>
+				</div>
+			{/snippet}
+
+			<div class="px-2 pb-4 sm:px-4">
+				{#if comparisonsLoading}
+					<div class="space-y-2 px-2 py-4">
+						<Skeleton variant="text" lines={2} />
+						<div class="overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)]">
+							<table class="w-full">
+								<tbody>
+									{#each Array.from({ length: 6 }) as _}
+										<Skeleton variant="table-row" />
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					</div>
 				{:else}
-					<table class="w-full min-w-[720px] text-left text-sm">
-						<thead class="border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground">
-							<tr>
-								<th class="px-4 py-2">Rengiat</th>
-								<th class="px-4 py-2">POLRES</th>
-								<th class="px-4 py-2">Kategori</th>
-								<th class="px-4 py-2 text-right">Rencana plot</th>
-								<th class="px-4 py-2 text-right">Terploting</th>
-								<th class="px-4 py-2 text-right">Laporan</th>
-								<th class="px-4 py-2 text-right">Bukti</th>
-								<th class="px-4 py-2 text-right">+GPS</th>
-								<th class="px-4 py-2 text-right">Luar radius</th>
-								<th class="px-4 py-2">Status</th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table hasRows={data.comparisons.length > 0} stickyHeader={true} class="min-w-[720px]">
+						{#snippet header()}
+							<th class="px-4 py-2">Rengiat</th>
+							<th class="px-4 py-2">POLRES</th>
+							<th class="px-4 py-2">Kategori</th>
+							<th class="px-4 py-2 text-right">Rencana plot</th>
+							<th class="px-4 py-2 text-right">Terploting</th>
+							<th class="px-4 py-2 text-right">Laporan</th>
+							<th class="px-4 py-2 text-right">Bukti</th>
+							<th class="px-4 py-2 text-right">+GPS</th>
+							<th class="px-4 py-2 text-right">Luar radius</th>
+							<th class="px-4 py-2">Status</th>
+						{/snippet}
+
+						{#snippet empty()}
+							Tidak ada Rengiat disetujui untuk filter ini.
+						{/snippet}
+
+						{#snippet body()}
 							{#each data.comparisons as row}
 								{@const kb = kategoriBadge(row.kategori)}
-								<tr class="border-b border-border/80 hover:bg-muted/20 {row.urgency === 'HIGH' ? 'bg-red-50/30' : ''}">
+								<tr class="border-b border-[var(--border)]/80 hover:bg-[var(--bg)]/35 {row.urgency === 'HIGH' ? 'bg-red-50/30 dark:bg-red-950/20' : ''}">
 									<td class="px-4 py-2.5">
-										<a href="/dashboard/rengiat/{row.id}" class="font-medium text-foreground hover:text-primary hover:underline">{row.judul}</a>
+										<a class="font-medium text-[var(--text)] hover:text-[var(--primary)] hover:underline" href="/dashboard/rengiat/{row.id}">{row.judul}</a>
 									</td>
-									<td class="px-4 py-2.5 text-muted-foreground">{row.polresNama}</td>
+									<td class="px-4 py-2.5 text-[var(--text-muted)]">{row.polresNama}</td>
 									<td class="px-4 py-2.5">
-										<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold {kb.cls}">{kb.label}</span>
+										<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold {kb.cls}">{kb.label}</span>
 										{#if row.targetPointId != null && data.vulnPointsMap?.[row.targetPointId]}
 											<button
 												type="button"
-												class="ml-1 text-[10px] font-medium text-red-600 underline decoration-dotted hover:text-red-800"
-												onclick={() => { showPointModal = row.targetPointId; }}
+												class="ml-1 text-xs font-medium text-red-600 underline decoration-dotted hover:text-red-800"
+												onclick={() => {
+													showPointModal = row.targetPointId;
+												}}
 											>
 												Titik Rawan
 											</button>
@@ -226,25 +291,31 @@
 									<td class="px-4 py-2.5 text-right tabular-nums">{row.withGps}</td>
 									<td class="px-4 py-2.5 text-right tabular-nums">
 										{#if row.outRadiusCount > 0}
-											<span class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-900">Di luar radius: {row.outRadiusCount}</span>
+											<span class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-900 dark:bg-rose-950/40 dark:text-rose-100"
+												>Di luar radius: {row.outRadiusCount}</span
+											>
 										{:else}
 											0
 										{/if}
 									</td>
 									<td class="px-4 py-2.5">
 										{#if row.ok}
-											<span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">Memenuhi</span>
+											<span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-100"
+												>Memenuhi</span
+											>
 										{:else}
-											<span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">Perlu tindak</span>
+											<span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/35 dark:text-amber-100"
+												>Perlu tindak</span
+											>
 										{/if}
 									</td>
 								</tr>
 							{/each}
-						</tbody>
-					</table>
+						{/snippet}
+					</Table>
 				{/if}
 			</div>
-		</div>
+		</Card>
 
 		<div>
 			<h2 class="mb-3 text-sm font-semibold text-foreground">Bukti & laporan lapangan terbaru</h2>
@@ -300,13 +371,14 @@
 		role="dialog"
 		aria-modal="true"
 		aria-label="Detail titik rawan"
-		onclick={() => { showPointModal = null; }}
+		tabindex="-1"
+		onclick={(e) => {
+			if (e.currentTarget === e.target) showPointModal = null;
+		}}
 		onkeydown={(e) => { if (e.key === 'Escape') showPointModal = null; }}
 	>
 		<div
 			class="relative w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={() => {}}
 			role="document"
 		>
 			<button

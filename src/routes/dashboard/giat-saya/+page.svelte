@@ -6,6 +6,9 @@
 	import { enqueueLhp, fileToBase64, listOutbox, type QueuedLhp } from '$lib/client/lhp-outbox';
 	import { refreshLhpOutboxCount } from '$lib/stores/lhp-outbox-status';
 	import { onMount } from 'svelte';
+	import FailedOutboxPanel from '$lib/components/FailedOutboxPanel.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let { data, form } = $props();
 
@@ -274,16 +277,18 @@
 	{#if outboxRows.length > 0}
 		<div class="rounded-xl border border-amber-300 bg-amber-50/90 px-4 py-3 text-sm shadow-sm">
 			<p class="font-semibold text-amber-950">Antrean lokal (menunggu sinyal)</p>
-			<ul class="mt-2 space-y-1.5 text-xs text-amber-900">
+			<ul class="mt-2 space-y-1.5 text-xs text-amber-900 sm:text-sm">
 				{#each outboxRows as row (row.id)}
 					<li class="flex justify-between gap-2 border-b border-amber-200/80 pb-1 last:border-0">
 						<span>Rengiat #{row.rengiatId} · {new Date(row.createdAt).toLocaleString('id-ID')}</span>
-						<span class="font-mono text-[10px] opacity-80">{row.deskripsi.slice(0, 40)}…</span>
+						<span class="font-mono text-xs opacity-80">{row.deskripsi.slice(0, 40)}…</span>
 					</li>
 				{/each}
 			</ul>
 		</div>
 	{/if}
+
+	<FailedOutboxPanel />
 
 	{#if data.approvedRengiat.length === 0}
 		<div class="rounded-xl border border-border bg-card px-5 py-12 text-center text-sm text-muted-foreground shadow-sm">
@@ -296,11 +301,11 @@
 				{@const active = activeForRengiat(rg.id)}
 				{@const outPending = outboxRows.some((o) => o.rengiatId === rg.id)}
 				{@const synced = (s?.count ?? 0) > 0}
-				<li class="rounded-xl border border-border bg-card p-4 shadow-sm">
+				<Card class="overflow-hidden">
 					<div class="flex flex-col gap-2">
 						<div class="flex flex-wrap items-center gap-2">
 							<h2 class="text-base font-semibold text-foreground">{rg.judul}</h2>
-							<span class="text-[10px] text-muted-foreground" aria-hidden="true">
+							<span class="text-xs text-muted-foreground" aria-hidden="true">
 								{#if outPending}
 									<span title="Menunggu sinyal / IndexedDB">☁️</span>
 								{/if}
@@ -318,7 +323,7 @@
 							<div class="rounded-lg border border-rose-300/90 bg-rose-50 px-3 py-2.5 text-xs text-rose-950 shadow-sm">
 								<div class="flex flex-wrap items-center justify-between gap-2">
 									<p class="font-semibold text-rose-950">Feedback Kabag Ops</p>
-									<span class="inline-flex rounded-full bg-rose-700 px-2 py-0.5 text-[10px] font-bold text-white">
+									<span class="inline-flex rounded-full bg-rose-700 px-2 py-0.5 text-xs font-bold text-white">
 										Perlu Perbaikan
 									</span>
 								</div>
@@ -327,27 +332,28 @@
 										? s.lastReturned.note
 										: 'Tidak ada catatan detail; hubungi Kabag Ops jika perlu klarifikasi.'}
 								</p>
-								<p class="mt-1 text-[10px] text-rose-800/85">Dikembalikan: {formatDate(s.lastReturned.at)}</p>
-								<button
+								<p class="mt-1 text-xs text-rose-800/85">Dikembalikan: {formatDate(s.lastReturned.at)}</p>
+								<Button
 									type="button"
+									variant="danger"
+									class="mt-2 w-full sm:w-auto"
 									onclick={() => prefillFromReturned(rg.id)}
-									class="mt-2 w-full rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-800 sm:w-auto"
 								>
 									Perbaiki Laporan
-								</button>
+								</Button>
 							</div>
 						{:else if s?.latestVerificationStatus === 'awaiting_polres' && (s.count ?? 0) > 0}
-							<p class="text-[10px] text-blue-900/90">
+							<p class="text-xs text-blue-900/90">
 								<span class="rounded bg-blue-100/90 px-1.5 py-0.5 font-medium">Menunggu verifikasi Polres</span>
 								— LHP terakhir Anda masih dalam antrean Kabag Ops.
 							</p>
 						{:else if s?.latestVerificationStatus === 'verified' && (s.count ?? 0) > 0}
-							<p class="text-[10px] text-emerald-900/85">
+							<p class="text-xs text-emerald-900/85">
 								<span class="rounded bg-emerald-100/90 px-1.5 py-0.5 font-medium">LHP terakhir diverifikasi</span>
 							</p>
 						{/if}
 
-						<p class="text-[10px] text-muted-foreground">
+						<p class="text-xs text-muted-foreground">
 							{#if outPending}
 								<span class="text-amber-800">☁️ Menunggu sinyal (lokal)</span>
 							{/if}
@@ -377,35 +383,33 @@
 
 						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 							{#if !active}
-								<button
+								<Button
 									type="button"
+									variant="secondary"
+									class="border-2 border-[var(--primary)] bg-[var(--primary)]/5 font-bold text-[var(--primary)]"
 									onclick={() => void mulaiGiat(rg.id)}
-									class="flex h-11 items-center justify-center rounded-lg border-2 border-primary bg-primary/5 text-sm font-bold text-primary"
 								>
 									Mulai Giat
-								</button>
+								</Button>
 							{:else}
-								<button
-									type="button"
-									onclick={() => void selesaiGiat(rg.id)}
-									class="flex h-11 items-center justify-center rounded-lg border border-border bg-muted/50 text-sm font-semibold text-foreground"
-								>
+								<Button type="button" variant="secondary" class="font-semibold" onclick={() => void selesaiGiat(rg.id)}>
 									Selesai Giat
-								</button>
-								<p class="col-span-full text-[10px] text-muted-foreground sm:col-span-2">
+								</Button>
+								<p class="col-span-full text-xs text-muted-foreground sm:col-span-2">
 									Aktif sejak {formatDate(active.startedAt)} · titik awal
 									{active.startLat.toFixed(5)}, {active.startLng.toFixed(5)}
 								</p>
 							{/if}
-							<button
+							<Button
 								type="button"
+								variant="primary"
 								disabled={!active}
-								onclick={() => (openFormFor = openFormFor === rg.id ? null : rg.id)}
-								class="flex h-11 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-45"
+								class="font-bold"
 								title={!active ? 'Tekan Mulai Giat terlebih dahulu' : ''}
+								onclick={() => (openFormFor = openFormFor === rg.id ? null : rg.id)}
 							>
 								{openFormFor === rg.id ? 'Tutup form LHP' : 'Input LHP'}
-							</button>
+							</Button>
 						</div>
 					</div>
 
@@ -459,44 +463,44 @@
 							<input type="hidden" name="edit_report_id" value={editReportId ?? ''} />
 
 							<div>
-								<label class="text-xs font-medium text-foreground" for="d-{rg.id}">Deskripsi</label>
+								<label class="text-sm font-medium text-foreground" for="d-{rg.id}">Deskripsi</label>
 								<textarea
 									id="d-{rg.id}"
 									name="deskripsi"
 									required
 									rows="3"
-									class="mt-1 flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+									class="mt-1 flex w-full rounded-lg border border-input bg-background px-3 py-2 text-base"
 									placeholder="Uraian kegiatan di lapangan…"
 								></textarea>
 							</div>
 
 							<div class="grid grid-cols-2 gap-2">
 								<div>
-									<label class="text-xs font-medium" for="j-{rg.id}">Personil hadir (riil)</label>
+									<label class="text-sm font-medium" for="j-{rg.id}">Personil hadir (riil)</label>
 									<input
 										id="j-{rg.id}"
 										name="jumlah_terploting"
 										type="number"
 										min="0"
 										value="0"
-										class="mt-1 flex h-10 w-full rounded-lg border border-input px-2 text-sm"
+										class="mt-1 flex h-11 w-full rounded-lg border border-input px-2 text-base"
 									/>
 								</div>
 								<div class="flex items-end pb-1">
-									<label class="flex items-center gap-2 text-xs font-medium">
+									<label class="flex min-h-11 items-center gap-2 text-sm font-medium">
 										<input type="checkbox" name="bukti_lapangan" class="rounded border-input" />
 										Bukti lapangan
 									</label>
 								</div>
 							</div>
 
-							<p class="text-[11px] text-muted-foreground">
+							<p class="text-xs text-muted-foreground">
 								<strong class="text-foreground">GPS:</strong> koordinat diambil saat Kirim.
 								<strong class="text-foreground">Foto:</strong> kompresi + cap waktu pojok untuk ANEV.
 							</p>
 
 							<div>
-								<label class="text-xs font-medium" for="f-{rg.id}">Bukti lapangan (kamera)</label>
+								<label class="text-sm font-medium" for="f-{rg.id}">Bukti lapangan (kamera)</label>
 								<input
 									bind:this={fotoInput}
 									id="f-{rg.id}"
@@ -505,24 +509,27 @@
 									accept="image/*"
 									capture="environment"
 									onchange={onFotoChange}
-									class="mt-1 w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-2 file:py-1"
+									class="mt-1 w-full text-sm file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-3 file:py-2"
 								/>
-								<p class="mt-0.5 text-[10px] text-muted-foreground">
+								<p class="mt-0.5 text-xs text-muted-foreground">
 									Kompres &lt;500KB + stempel waktu di pojok.
 								</p>
 							</div>
 
-							<button
+							<Button
 								type="button"
+								variant="primary"
+								size="lg"
+								class="w-full font-bold"
+								loading={loading}
 								disabled={loading}
 								onclick={() => lhpForm && void handleSendLhp(rg.id, lhpForm)}
-								class="h-12 w-full rounded-lg bg-primary text-base font-bold text-primary-foreground disabled:opacity-50"
 							>
-								{loading ? 'Mengambil GPS & mengirim…' : 'Kirim LHP'}
-							</button>
+								{loading ? 'Mengambil GPS…' : 'Kirim LHP'}
+							</Button>
 						</form>
 					{/if}
-				</li>
+				</Card>
 			{/each}
 		</ul>
 	{/if}

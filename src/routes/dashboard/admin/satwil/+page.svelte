@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import { onMount } from 'svelte';
+	import { installThemedRasterBaseLayer } from '$lib/client/leaflet-themed-tiles';
+	import Button from '$lib/components/ui/Button.svelte';
 
 	let { data, form } = $props();
 
@@ -42,6 +44,7 @@
 
 	onMount(() => {
 		let destroyed = false;
+		let teardownThemedBase: (() => void) | undefined;
 		void import('leaflet').then((L) => {
 			if (destroyed || !mapContainer) return;
 			Lmod = L;
@@ -51,10 +54,7 @@
 			// z-index default marker pane ~600; kita naikkan sedikit.
 			const paneEl = map.getPane('satwil-pin-pane');
 			if (paneEl) paneEl.style.zIndex = '650';
-			L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-				attribution: '&copy; OpenStreetMap',
-				maxZoom: 19
-			}).addTo(map);
+			teardownThemedBase = installThemedRasterBaseLayer(L, map);
 			markersLayer = L.layerGroup().addTo(map);
 			pickLayer = L.layerGroup().addTo(map);
 			map.on('click', (e) => {
@@ -72,6 +72,7 @@
 		});
 		return () => {
 			destroyed = true;
+			teardownThemedBase?.();
 			map?.remove();
 			map = null;
 			markersLayer = null;
@@ -204,7 +205,7 @@
 			<button
 				type="button"
 				onclick={() => (tab = t.k)}
-				class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors {tab === t.k
+				class="min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition-colors {tab === t.k
 					? 'bg-primary text-primary-foreground'
 					: 'bg-muted text-muted-foreground hover:bg-muted/80'}"
 			>
@@ -220,23 +221,20 @@
 					<h2 class="mb-3 text-sm font-semibold">Tambah POLRES</h2>
 					<form method="POST" action="?/createPolres" class="space-y-3" use:enhance={padMapToForm}>
 						<div>
-							<label class="text-xs font-medium text-muted-foreground" for="np-nama">Nama POLRES</label>
+							<label class="text-sm font-medium text-muted-foreground" for="np-nama">Nama POLRES</label>
 							<input
 								id="np-nama"
 								name="nama"
 								required
-								class="mt-1 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+								class="mt-1 flex h-11 w-full rounded-lg border border-input bg-background px-3 text-base"
 							/>
 						</div>
 						<p class="text-xs text-muted-foreground">
 							Koordinat dari peta: <span class="font-mono text-foreground">{pickLat.toFixed(5)}, {pickLng.toFixed(5)}</span>
 						</p>
-						<button
-							type="submit"
-							class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-						>
+						<Button type="submit" variant="primary" class="w-full sm:w-auto">
 							Simpan POLRES
-						</button>
+						</Button>
 					</form>
 				</div>
 
@@ -287,12 +285,9 @@
 															};
 														}}
 													>
-														<button
-															type="submit"
-															class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700"
-														>
+														<Button type="submit" variant="danger" size="sm">
 															Simpan lokasi (pin)
-														</button>
+														</Button>
 													</form>
 													<button
 														type="button"
@@ -307,7 +302,7 @@
 												{/if}
 											</div>
 											{#if editingUnitId === p.id}
-												<p class="mt-2 font-mono text-[11px] text-foreground">
+												<p class="mt-2 font-mono text-xs text-foreground">
 													Pin: {pickLat.toFixed(5)}, {pickLng.toFixed(5)}
 												</p>
 											{/if}
@@ -315,7 +310,7 @@
 
 										<form method="POST" action="?/updatePolres" class="space-y-2" use:enhance>
 											<input type="hidden" name="id" value={p.id} />
-											<input name="nama" value={p.nama} class="flex h-9 w-full rounded border border-input px-2 text-sm" />
+											<input name="nama" value={p.nama} class="flex h-11 w-full rounded border border-input bg-background px-2 text-base" />
 											<div class="flex gap-2">
 												<input
 													name="lat"
@@ -323,7 +318,7 @@
 													step="any"
 													placeholder="lat"
 													value={p.lat ?? ''}
-													class="h-9 w-full rounded border border-input px-2 text-sm"
+													class="h-11 w-full rounded border border-input bg-background px-2 text-base"
 												/>
 												<input
 													name="lng"
@@ -331,7 +326,7 @@
 													step="any"
 													placeholder="lng"
 													value={p.lng ?? ''}
-													class="h-9 w-full rounded border border-input px-2 text-sm"
+													class="h-11 w-full rounded border border-input bg-background px-2 text-base"
 												/>
 											</div>
 											<button type="submit" class="text-sm font-medium text-primary hover:underline">Simpan perubahan</button>
@@ -358,7 +353,7 @@
 					<label for="sel-polres" class="text-sm font-medium">POLRES</label>
 					<select
 						id="sel-polres"
-						class="h-10 max-w-md rounded-lg border border-input bg-background px-3 text-sm"
+						class="h-11 max-w-md rounded-lg border border-input bg-background px-3 text-base"
 						value={data.selectedPolresId != null ? String(data.selectedPolresId) : ''}
 						onchange={(e) => selectPolres((e.currentTarget as HTMLSelectElement).value)}
 					>
@@ -377,18 +372,18 @@
 						<form method="POST" action="?/createPolsek" class="space-y-3" use:enhance={padMapToForm}>
 							<input type="hidden" name="polres_id" value={data.selectedPolresId} />
 							<div>
-								<label class="text-xs font-medium" for="ns-nama">Nama POLSEK</label>
+								<label class="text-sm font-medium" for="ns-nama">Nama POLSEK</label>
 								<input
 									id="ns-nama"
 									name="nama"
 									required
-									class="mt-1 flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+									class="mt-1 flex h-11 w-full rounded-lg border border-input bg-background px-3 text-base"
 								/>
 							</div>
 							<p class="text-xs text-muted-foreground">Koordinat dari peta: {pickLat.toFixed(5)}, {pickLng.toFixed(5)}</p>
-							<button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+							<Button type="submit" variant="primary" class="w-full sm:w-auto">
 								Simpan POLSEK
-							</button>
+							</Button>
 						</form>
 					</div>
 
@@ -407,21 +402,21 @@
 										<div class="mt-3 space-y-3">
 											<form method="POST" action="?/updatePolsek" class="space-y-2" use:enhance>
 												<input type="hidden" name="id" value={s.id} />
-												<input name="nama" value={s.nama} class="flex h-9 w-full rounded border border-input px-2 text-sm" />
+												<input name="nama" value={s.nama} class="flex h-11 w-full rounded border border-input bg-background px-2 text-base" />
 												<div class="flex gap-2">
 													<input
 														name="lat"
 														type="number"
 														step="any"
 														value={s.lat ?? ''}
-														class="h-9 w-full rounded border border-input px-2 text-sm"
+														class="h-11 w-full rounded border border-input bg-background px-2 text-base"
 													/>
 													<input
 														name="lng"
 														type="number"
 														step="any"
 														value={s.lng ?? ''}
-														class="h-9 w-full rounded border border-input px-2 text-sm"
+														class="h-11 w-full rounded border border-input bg-background px-2 text-base"
 													/>
 												</div>
 												<button type="submit" class="text-sm font-medium text-primary hover:underline">Simpan</button>
@@ -449,47 +444,47 @@
 					<h2 class="mb-3 text-sm font-semibold">Tambah personil</h2>
 					<form method="POST" action="?/createUser" class="grid gap-3 sm:grid-cols-2" use:enhance>
 						<div class="sm:col-span-2">
-							<label class="text-xs font-medium" for="u-user">Username</label>
-							<input id="u-user" name="username" required class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm" />
+							<label class="text-sm font-medium" for="u-user">Username</label>
+							<input id="u-user" name="username" required class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base" />
 						</div>
 						<div class="sm:col-span-2">
-							<label class="text-xs font-medium" for="u-pass">Password</label>
+							<label class="text-sm font-medium" for="u-pass">Password</label>
 							<input
 								id="u-pass"
 								name="password"
 								type="password"
 								required
-								class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm"
+								class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base"
 							/>
 						</div>
 						<div>
-							<label class="text-xs font-medium" for="u-nama">Nama</label>
-							<input id="u-nama" name="nama" required class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm" />
+							<label class="text-sm font-medium" for="u-nama">Nama</label>
+							<input id="u-nama" name="nama" required class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base" />
 						</div>
 						<div>
-							<label class="text-xs font-medium" for="u-nrp">NRP</label>
+							<label class="text-sm font-medium" for="u-nrp">NRP</label>
 							<input
 								id="u-nrp"
 								name="nrp"
 								required
-								class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm font-mono"
+								class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base font-mono"
 								placeholder="Nomor registrasi personil"
 							/>
 						</div>
 						<div>
-							<label class="text-xs font-medium" for="u-pangkat">Pangkat</label>
-							<input id="u-pangkat" name="pangkat" required class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm" />
+							<label class="text-sm font-medium" for="u-pangkat">Pangkat</label>
+							<input id="u-pangkat" name="pangkat" required class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base" />
 						</div>
 						<div>
-							<label class="text-xs font-medium" for="u-role">Peran</label>
-							<select id="u-role" name="role" required class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm">
+							<label class="text-sm font-medium" for="u-role">Peran</label>
+							<select id="u-role" name="role" required class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base">
 								<option value="POLRES">POLRES</option>
 								<option value="POLSEK">POLSEK</option>
 							</select>
 						</div>
 						<div>
-							<label class="text-xs font-medium" for="u-unit">Unit</label>
-							<select id="u-unit" name="unit_id" required class="mt-1 flex h-10 w-full rounded-lg border border-input px-3 text-sm">
+							<label class="text-sm font-medium" for="u-unit">Unit</label>
+							<select id="u-unit" name="unit_id" required class="mt-1 flex h-11 w-full rounded-lg border border-input px-3 text-base">
 								<option value="">Pilih unit…</option>
 								{#each data.allSatwilUnits as u}
 									<option value={String(u.id)}>[{u.tipe}] {u.label}</option>
@@ -497,9 +492,9 @@
 							</select>
 						</div>
 						<div class="sm:col-span-2">
-							<button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
+							<Button type="submit" variant="primary" class="w-full sm:w-auto">
 								Buat akun
-							</button>
+							</Button>
 						</div>
 					</form>
 				</div>
@@ -532,14 +527,14 @@
 												<div class="mt-2 space-y-2 rounded border border-border bg-background p-2">
 													<form method="POST" action="?/updateUser" class="space-y-2" use:enhance>
 														<input type="hidden" name="id" value={pe.id} />
-														<input name="nama" value={pe.nama} class="h-8 w-full rounded border px-2 text-xs" />
-														<input name="nrp" value={pe.nrp ?? ''} class="h-8 w-full rounded border px-2 font-mono text-xs" />
-														<input name="pangkat" value={pe.pangkat} class="h-8 w-full rounded border px-2 text-xs" />
-														<select name="role" class="h-8 w-full rounded border px-2 text-xs" value={pe.role}>
+														<input name="nama" value={pe.nama} class="min-h-10 w-full rounded border border-input bg-background px-2 text-sm" />
+														<input name="nrp" value={pe.nrp ?? ''} class="min-h-10 w-full rounded border border-input bg-background px-2 font-mono text-sm" />
+														<input name="pangkat" value={pe.pangkat} class="min-h-10 w-full rounded border border-input bg-background px-2 text-sm" />
+														<select name="role" class="min-h-10 w-full rounded border border-input bg-background px-2 text-sm" value={pe.role}>
 															<option value="POLRES">POLRES</option>
 															<option value="POLSEK">POLSEK</option>
 														</select>
-														<select name="unit_id" class="h-8 w-full rounded border px-2 text-xs" value={pe.unitId}>
+														<select name="unit_id" class="min-h-10 w-full rounded border border-input bg-background px-2 text-sm" value={pe.unitId}>
 															{#each data.allSatwilUnits as u}
 																<option value={String(u.id)}>[{u.tipe}] {u.label}</option>
 															{/each}
@@ -548,7 +543,7 @@
 															name="password"
 															type="password"
 															placeholder="Password baru (opsional)"
-															class="h-8 w-full rounded border px-2 text-xs"
+															class="min-h-10 w-full rounded border border-input bg-background px-2 text-sm"
 														/>
 														<button type="submit" class="text-xs font-medium text-primary">Simpan</button>
 													</form>
@@ -597,5 +592,9 @@
 		background: #ef4444;
 		border: 3px solid #fff;
 		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+	}
+	:global(.dark .satwil-pin__dot) {
+		border-color: var(--surface);
+		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 	}
 </style>
