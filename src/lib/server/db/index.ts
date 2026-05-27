@@ -1,15 +1,11 @@
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import * as schema from './schema';
-import { existsSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
 import { runSqliteMigrations } from './migrate';
+import { ensureParentDir, resolveSqlitePath } from '$lib/server/paths';
 
-const dbPath = './data/ops-sis.db';
-const dir = dirname(dbPath);
-if (!existsSync(dir)) {
-	mkdirSync(dir, { recursive: true });
-}
+const dbPath = resolveSqlitePath();
+ensureParentDir(dbPath);
 
 const sqlite = new Database(dbPath);
 sqlite.pragma('journal_mode = WAL');

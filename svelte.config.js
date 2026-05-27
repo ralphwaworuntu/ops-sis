@@ -1,9 +1,9 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-node';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 function getTrustedOrigins() {
 	const isProd = process.env.NODE_ENV === 'production';
-	const rawAppUrl = process.env.VITE_APP_URL;
+	const rawAppUrl = process.env.VITE_APP_URL ?? process.env.ORIGIN;
 
 	// Dev: izinkan origin localhost + IP LAN (agar login dari device lain tidak kena CSRF false-positive).
 	// Prod: wajib origin tunggal dari env (tanpa wildcard).
@@ -32,14 +32,17 @@ function getTrustedOrigins() {
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
-		adapter: adapter(),
+		adapter: adapter({
+			out: 'build',
+			precompress: true
+		}),
 		alias: {
 			'$components': 'src/lib/components',
 			'$components/*': 'src/lib/components/*'
 		},
 		// CSRF: trustedOrigins harus eksplisit.
 		// - Dev: localhost + IP LAN dev server (mencegah false-positive saat akses via IP).
-		// - Prod: 1 origin dari VITE_APP_URL (tanpa wildcard).
+		// - Prod: 1 origin dari VITE_APP_URL / ORIGIN (tanpa wildcard).
 		csrf: {
 			trustedOrigins: getTrustedOrigins()
 		}

@@ -11,7 +11,7 @@ function allowedOriginForRequest(origin: string | null, fallbackAppOrigin: strin
 		if (origin === 'http://localhost:5173') return true;
 		return /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:5173$/.test(origin);
 	}
-	const raw = process.env.VITE_APP_URL;
+	const raw = process.env.VITE_APP_URL ?? process.env.ORIGIN;
 	if (!raw) return origin === fallbackAppOrigin;
 	try {
 		return origin === new URL(raw).origin;

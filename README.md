@@ -107,3 +107,37 @@ npm run dev
 - Folder `data/` dan `uploads/` **tidak menyertakan DB/media** di GitHub untuk mencegah kebocoran data.
 - Untuk membuat DB demo baru di mesin yang baru clone, jalankan **`npm run db:seed`**.
 
+## Dokumentasi
+
+| Dokumen | Isi |
+| ------- | --- |
+| [docs/PROJECT-DOCUMENTATION.md](docs/PROJECT-DOCUMENTATION.md) | Arsitektur, ERD, DFD, RBAC, API — untuk developer |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Panduan deploy VPS super lengkap |
+| [docs/README.md](docs/README.md) | Indeks dokumentasi |
+
+## Deploy ke VPS (production)
+
+Stack: **Node.js** + **adapter-node** (bukan XAMPP). Database: **SQLite** di `data/`.
+
+### Instalasi otomatis (Ubuntu 22.04 / 24.04)
+
+```bash
+chmod +x deploy/install.sh
+sudo DOMAIN=sis.example.com EMAIL=admin@example.com \
+     bash deploy/install.sh --yes
+```
+
+Opsi: `--from-local` (rsync dari repo ini), `--skip-seed`, `--skip-ssl`. Detail lengkap: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
+### Deploy manual singkat
+
+```bash
+npm ci && cp .env.production.example .env.production
+# edit ORIGIN / VITE_APP_URL (HTTPS)
+npm run db:seed   # pertama kali
+set -a && source .env.production && set +a && npm run build
+npm start   # atau: pm2 start deploy/ecosystem.config.cjs
+```
+
+Nginx: `deploy/nginx-ops-sis.conf.example` · PM2: `deploy/ecosystem.config.cjs`
+

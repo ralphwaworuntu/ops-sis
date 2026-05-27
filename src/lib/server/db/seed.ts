@@ -2,14 +2,14 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import bcryptjs from 'bcryptjs';
 const { hashSync } = bcryptjs;
-import { existsSync, mkdirSync } from 'fs';
 import * as schema from './schema';
 import { runSqliteMigrations } from './migrate';
+import { ensureParentDir, resolveSqlitePath } from '../paths.js';
 
-const dir = './data';
-if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+const dbPath = resolveSqlitePath();
+ensureParentDir(dbPath);
 
-const sqlite = new Database('./data/ops-sis.db');
+const sqlite = new Database(dbPath);
 sqlite.pragma('journal_mode = WAL');
 sqlite.pragma('foreign_keys = ON');
 

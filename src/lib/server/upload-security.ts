@@ -1,4 +1,5 @@
 import path from 'path';
+import { resolveUploadDir } from '$lib/server/paths';
 
 export const ALLOWED_UPLOAD_EXTS = new Set(['jpg', 'jpeg', 'png', 'pdf', 'docx', 'xlsx']);
 
@@ -58,7 +59,7 @@ export function resolveUploadReadPath(paramsPath: string): { ok: true; absPath: 
 	if (paramsPath.startsWith('/')) return { ok: false };
 	if (paramsPath.includes('..')) return { ok: false };
 
-	const root = path.resolve('./uploads');
+	const root = resolveUploadDir();
 	const normalized = path.normalize(paramsPath).replace(/^([\\/])+/g, '');
 	const abs = path.resolve(root, normalized);
 

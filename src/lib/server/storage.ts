@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import crypto from 'crypto';
 import { ALLOWED_UPLOAD_EXTS, sanitizeExt, sanitizeSubfolder, sniffUploadKind } from '$lib/server/upload-security';
+import { resolveUploadDir } from '$lib/server/paths';
 
-const UPLOAD_DIR = './uploads';
+const UPLOAD_DIR = resolveUploadDir();
 
 function ensureDir(dir: string) {
 	if (!existsSync(dir)) {
