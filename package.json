@@ -11,6 +11,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "db:seed": "tsx src/lib/server/db/seed.ts",
     "db:seed:kupang": "tsx src/lib/server/db/seed-kupang-kota.ts",
+    "db:export": "node scripts/export-db-for-git.mjs data/ops-sis.db data/ops-sis.db",
     "test": "npx vitest run",
     "test:watch": "npx vitest",
     "test:coverage": "npx vitest run --coverage"

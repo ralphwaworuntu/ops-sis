@@ -4,10 +4,18 @@ build
 dist
 .env
 
-# Local runtime data (do not commit DBs)
+# Local runtime data (shared demo DB is committed as data/ops-sis.db)
 data/*
 !data/.gitkeep
 !data/README.md
+!data/ops-sis.db
+data/ops-sis.db-*
+data/*.snap
+data/*.snap-*
+data/*.tmp
+data/*.tmp-*
+data/*.git
+data/*.export
 
 # User uploads (do not commit actual media)
 uploads/*
@@ -17,4 +25,5 @@ uploads/laporan/*
 !uploads/laporan/.gitkeep
 .DS_Store
 *.db
+!data/ops-sis.db
 *.db-journal
