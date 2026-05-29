@@ -7,7 +7,12 @@ import { saveFile } from '$lib/server/storage';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { user } = await parent();
-	if (user!.role !== 'POLRES') {
+	if (
+		user!.role !== 'ADMIN POLRES' &&
+		user!.role !== 'KABAG OPS' &&
+		user!.role !== 'KAPOLRES' &&
+		user!.role !== 'WAKAPOLRES'
+	) {
 		redirect(302, '/dashboard/rengiat');
 	}
 
@@ -30,7 +35,13 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 export const actions: Actions = {
 	default: async ({ request, locals }) => {
-		if (!locals.user || locals.user.role !== 'POLRES') {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'ADMIN POLRES' &&
+				locals.user.role !== 'KABAG OPS' &&
+				locals.user.role !== 'KAPOLRES' &&
+				locals.user.role !== 'WAKAPOLRES')
+		) {
 			return fail(403, { error: 'Unauthorized' });
 		}
 

@@ -7,7 +7,14 @@ import { sseBroadcaster } from '$lib/server/sse';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { user } = await parent();
-	if (user?.role !== 'POLRES' || user.unitId == null) {
+	if (
+		!user ||
+		(user.role !== 'ADMIN POLRES' &&
+			user.role !== 'KABAG OPS' &&
+			user.role !== 'KAPOLRES' &&
+			user.role !== 'WAKAPOLRES') ||
+		user.unitId == null
+	) {
 		redirect(302, '/dashboard');
 	}
 
@@ -46,7 +53,14 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 export const actions: Actions = {
 	bulk: async ({ request, locals }) => {
-		if (locals.user?.role !== 'POLRES' || locals.user.unitId == null) {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'ADMIN POLRES' &&
+				locals.user.role !== 'KABAG OPS' &&
+				locals.user.role !== 'KAPOLRES' &&
+				locals.user.role !== 'WAKAPOLRES') ||
+			locals.user.unitId == null
+		) {
 			return fail(403, { error: 'Unauthorized' });
 		}
 
@@ -85,7 +99,7 @@ export const actions: Actions = {
 					type: 'lhp_verification',
 					data: {
 						message: 'LHP Anda telah diverifikasi Kabag Ops / Polres.',
-						notifyRoles: ['POLSEK'],
+						notifyRoles: ['ADMIN POLSEK', 'KAPOLSEK', 'WAKAPOLSEK', 'KANIT SAMAPTA', 'KATIM PATROLI'],
 						polresId: rg.polresId,
 						targetUserId: row.userId,
 						kind: 'verified'
@@ -100,7 +114,7 @@ export const actions: Actions = {
 					type: 'lhp_verification',
 					data: {
 						message: `LHP dikembalikan untuk perbaikan: ${returnNote.slice(0, 120)}`,
-						notifyRoles: ['POLSEK'],
+						notifyRoles: ['ADMIN POLSEK', 'KAPOLSEK', 'WAKAPOLSEK', 'KANIT SAMAPTA', 'KATIM PATROLI'],
 						polresId: rg.polresId,
 						targetUserId: row.userId,
 						kind: 'returned'

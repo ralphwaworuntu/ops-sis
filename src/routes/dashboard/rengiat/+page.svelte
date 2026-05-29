@@ -75,7 +75,7 @@
 			</div>
 		{/if}
 
-		{#if data.user?.role === 'POLRES'}
+		{#if ['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES'].includes(data.user?.role ?? '')}
 			<a
 				href="/dashboard/rengiat/baru"
 				class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98]"

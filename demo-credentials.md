@@ -11,6 +11,7 @@
 | `polda_admin`       | `polda123`  | **POLDA**| POLDA Metro Jaya         | Review Rengiat, AI Generator, monitoring |
 | `polres_jaksel`     | `polres123` | **POLRES**| POLRES Jakarta Selatan  | Input peta rawan, buat Rengiat, AI Audit |
 | `polres_jaktim`     | `polres123` | **POLRES**| POLRES Jakarta Timur   | Input peta rawan, buat Rengiat, AI Audit |
+| `polres_kupang_kota`| `polres123` | **POLRES**| POLRES Kupang Kota (NTT) | Input peta rawan — 20 titik demo (radius 500 m) |
 | `polsek_kebayoran`  | `polsek123` | **POLSEK**| POLSEK Kebayoran Baru  | Lapor kegiatan + unggah foto             |
 | `polsek_pancoran`   | `polsek123` | **POLSEK**| POLSEK Pancoran        | Lapor kegiatan + unggah foto             |
 
@@ -35,3 +36,13 @@
 ```bash
 npm run db:seed
 ```
+
+### Seed demo POLRES Kupang Kota (20 titik rawan + akun)
+
+Jalankan setelah DB ada (boleh DB yang sudah pernah di-seed Jakarta):
+
+```bash
+npm run db:seed:kupang
+```
+
+Membuat/memperbarui: **POLDA Nusa Tenggara Timur**, **POLRES Kupang Kota**, user `polres_kupang_kota`, dan 20 titik kasus dummy (radius **500 m**).

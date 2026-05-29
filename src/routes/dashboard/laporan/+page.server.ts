@@ -9,7 +9,13 @@ import { submitPolsekActivityReport } from '$lib/server/activity-report';
 export const load: PageServerLoad = async ({ parent, url }) => {
 	const { user } = await parent();
 
-	if (user!.role === 'POLSEK') {
+	if (
+		user!.role === 'ADMIN POLSEK' ||
+		user!.role === 'KATIM PATROLI' ||
+		user!.role === 'KAPOLSEK' ||
+		user!.role === 'WAKAPOLSEK' ||
+		user!.role === 'KANIT SAMAPTA'
+	) {
 		redirect(302, '/dashboard/giat-saya');
 	}
 

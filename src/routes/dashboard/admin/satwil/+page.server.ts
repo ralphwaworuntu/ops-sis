@@ -1,8 +1,19 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { units, users, sessions, vulnerabilityPoints, rengiat } from '$lib/server/db/schema';
-import { eq, and, inArray, or } from 'drizzle-orm';
+import {
+	units,
+	users,
+	sessions,
+	vulnerabilityPoints,
+	rengiat,
+	activityReports,
+	fieldGiatSessions,
+	notableIncidents,
+	polsekIntelNotes,
+	auditLogs
+} from '$lib/server/db/schema';
+import { eq, and, inArray, or, isNull } from 'drizzle-orm';
 import bcryptjs from 'bcryptjs';
 const { hashSync } = bcryptjs;
 import {
@@ -18,6 +29,8 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	const polresList = listPolresUnderPolda(poldaId);
 	const polresFilter = url.searchParams.get('polres');
 	const polresId = polresFilter ? parseInt(polresFilter, 10) : NaN;
+
+	const polsekAllList = polresList.flatMap((p) => listPolsekUnderPolres(p.id));
 	const polsekList =
 		!isNaN(polresId) && getPolresIfUnderPolda(polresId, poldaId)
 			? listPolsekUnderPolres(polresId)
@@ -25,7 +38,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 
 	const unitIdsUnderPolda = [
 		...polresList.map((p) => p.id),
-		...polresList.flatMap((p) => listPolsekUnderPolres(p.id).map((s) => s.id))
+		...polsekAllList.map((s) => s.id)
 	];
 
 	const personil =
@@ -47,7 +60,17 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 					.where(
 						and(
 							inArray(users.unitId, unitIdsUnderPolda),
-							or(eq(users.role, 'POLRES'), eq(users.role, 'POLSEK'))
+							or(
+								eq(users.role, 'KABAG OPS'),
+								eq(users.role, 'ADMIN POLRES'),
+								eq(users.role, 'KAPOLRES'),
+								eq(users.role, 'WAKAPOLRES'),
+								eq(users.role, 'KATIM PATROLI'),
+								eq(users.role, 'ADMIN POLSEK'),
+								eq(users.role, 'KAPOLSEK'),
+								eq(users.role, 'WAKAPOLSEK'),
+								eq(users.role, 'KANIT SAMAPTA')
+							)
 						)
 					)
 					.all();
@@ -62,6 +85,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 
 	return {
 		polresList,
+		polsekAllList,
 		polsekList,
 		personil,
 		allSatwilUnits,
@@ -187,14 +211,49 @@ export const actions: Actions = {
 		const nama = d.get('nama')?.toString()?.trim() ?? '';
 		const nrp = d.get('nrp')?.toString()?.trim() ?? '';
 		const pangkat = d.get('pangkat')?.toString()?.trim() ?? '';
-		const role = d.get('role')?.toString() as 'POLRES' | 'POLSEK';
+		const role = d.get('role')?.toString() as
+			| 'KABAG OPS'
+			| 'ADMIN POLRES'
+			| 'KAPOLRES'
+			| 'WAKAPOLRES'
+			| 'KATIM PATROLI'
+			| 'ADMIN POLSEK'
+			| 'KAPOLSEK'
+			| 'WAKAPOLSEK'
+			| 'KANIT SAMAPTA';
 		const unitId = parseInt(d.get('unit_id')?.toString() ?? '', 10);
 		if (!username || !password || !nama || !nrp || !pangkat || !role || isNaN(unitId)) {
 			return fail(400, { error: 'Semua field wajib diisi (termasuk NRP).' });
 		}
-		if (role !== 'POLRES' && role !== 'POLSEK') return fail(400, { error: 'Peran tidak valid.' });
-		if (role === 'POLRES' && !getPolresIfUnderPolda(unitId, pid)) return fail(403, { error: 'Unit POLRES tidak valid.' });
-		if (role === 'POLSEK' && !getPolsekIfUnderPolda(unitId, pid)) return fail(403, { error: 'Unit POLSEK tidak valid.' });
+		if (
+			role !== 'KABAG OPS' &&
+			role !== 'ADMIN POLRES' &&
+			role !== 'KAPOLRES' &&
+			role !== 'WAKAPOLRES' &&
+			role !== 'KATIM PATROLI' &&
+			role !== 'ADMIN POLSEK' &&
+			role !== 'KAPOLSEK' &&
+			role !== 'WAKAPOLSEK' &&
+			role !== 'KANIT SAMAPTA'
+		) {
+			return fail(400, { error: 'Peran tidak valid.' });
+		}
+		if (
+			(role === 'KABAG OPS' || role === 'ADMIN POLRES' || role === 'KAPOLRES' || role === 'WAKAPOLRES') &&
+			!getPolresIfUnderPolda(unitId, pid)
+		) {
+			return fail(403, { error: 'Unit POLRES tidak valid.' });
+		}
+		if (
+			(role === 'KATIM PATROLI' ||
+				role === 'ADMIN POLSEK' ||
+				role === 'KAPOLSEK' ||
+				role === 'WAKAPOLSEK' ||
+				role === 'KANIT SAMAPTA') &&
+			!getPolsekIfUnderPolda(unitId, pid)
+		) {
+			return fail(403, { error: 'Unit POLSEK tidak valid.' });
+		}
 		try {
 			db.insert(users)
 				.values({
@@ -222,14 +281,66 @@ export const actions: Actions = {
 		const pangkat = d.get('pangkat')?.toString()?.trim() ?? '';
 		const password = d.get('password')?.toString() ?? '';
 		const unitId = parseInt(d.get('unit_id')?.toString() ?? '', 10);
-		const role = d.get('role')?.toString() as 'POLRES' | 'POLSEK';
-		if (isNaN(id) || !nama || !nrp || !pangkat || isNaN(unitId) || (role !== 'POLRES' && role !== 'POLSEK')) {
+		const role = d.get('role')?.toString() as
+			| 'KABAG OPS'
+			| 'ADMIN POLRES'
+			| 'KAPOLRES'
+			| 'WAKAPOLRES'
+			| 'KATIM PATROLI'
+			| 'ADMIN POLSEK'
+			| 'KAPOLSEK'
+			| 'WAKAPOLSEK'
+			| 'KANIT SAMAPTA';
+		if (
+			isNaN(id) ||
+			!nama ||
+			!nrp ||
+			!pangkat ||
+			isNaN(unitId) ||
+			(role !== 'KABAG OPS' &&
+				role !== 'ADMIN POLRES' &&
+				role !== 'KAPOLRES' &&
+				role !== 'WAKAPOLRES' &&
+				role !== 'KATIM PATROLI' &&
+				role !== 'ADMIN POLSEK' &&
+				role !== 'KAPOLSEK' &&
+				role !== 'WAKAPOLSEK' &&
+				role !== 'KANIT SAMAPTA')
+		) {
 			return fail(400, { error: 'Data tidak valid.' });
 		}
 		const u = db.select().from(users).where(eq(users.id, id)).get();
-		if (!u || (u.role !== 'POLRES' && u.role !== 'POLSEK')) return fail(403, { error: 'Tidak diizinkan.' });
-		if (role === 'POLRES' && !getPolresIfUnderPolda(unitId, pid)) return fail(403, { error: 'Unit tidak valid.' });
-		if (role === 'POLSEK' && !getPolsekIfUnderPolda(unitId, pid)) return fail(403, { error: 'Unit tidak valid.' });
+		if (
+			!u ||
+			(u.role !== 'KABAG OPS' &&
+				u.role !== 'ADMIN POLRES' &&
+				u.role !== 'KAPOLRES' &&
+				u.role !== 'WAKAPOLRES' &&
+				u.role !== 'KATIM PATROLI' &&
+				u.role !== 'ADMIN POLSEK' &&
+				u.role !== 'KAPOLSEK' &&
+				u.role !== 'WAKAPOLSEK' &&
+				u.role !== 'KANIT SAMAPTA')
+		) {
+			return fail(403, { error: 'Tidak diizinkan.' });
+		}
+		if (
+			(role === 'KABAG OPS' ||
+				role === 'ADMIN POLRES' ||
+				role === 'KAPOLRES' ||
+				role === 'WAKAPOLRES') &&
+			!getPolresIfUnderPolda(unitId, pid)
+		)
+			return fail(403, { error: 'Unit tidak valid.' });
+		if (
+			(role === 'KATIM PATROLI' ||
+				role === 'ADMIN POLSEK' ||
+				role === 'KAPOLSEK' ||
+				role === 'WAKAPOLSEK' ||
+				role === 'KANIT SAMAPTA') &&
+			!getPolsekIfUnderPolda(unitId, pid)
+		)
+			return fail(403, { error: 'Unit tidak valid.' });
 		if (password.length > 0) {
 			db.update(users)
 				.set({
@@ -254,14 +365,89 @@ export const actions: Actions = {
 		const id = parseInt(d.get('id')?.toString() ?? '', 10);
 		if (isNaN(id)) return fail(400, { error: 'ID tidak valid.' });
 		const u = db.select().from(users).where(eq(users.id, id)).get();
-		if (!u || (u.role !== 'POLRES' && u.role !== 'POLSEK')) return fail(403, { error: 'Tidak diizinkan.' });
-		if (u.unitId) {
-			if (u.role === 'POLRES' && !getPolresIfUnderPolda(u.unitId, pid)) return fail(403, { error: 'Tidak diizinkan.' });
-			if (u.role === 'POLSEK' && !getPolsekIfUnderPolda(u.unitId, pid)) return fail(403, { error: 'Tidak diizinkan.' });
+		if (
+			!u ||
+			(u.role !== 'KABAG OPS' &&
+				u.role !== 'ADMIN POLRES' &&
+				u.role !== 'KAPOLRES' &&
+				u.role !== 'WAKAPOLRES' &&
+				u.role !== 'KATIM PATROLI' &&
+				u.role !== 'ADMIN POLSEK' &&
+				u.role !== 'KAPOLSEK' &&
+				u.role !== 'WAKAPOLSEK' &&
+				u.role !== 'KANIT SAMAPTA')
+		) {
+			return fail(403, { error: 'Tidak diizinkan.' });
 		}
-		db.delete(sessions).where(eq(sessions.userId, id)).run();
-		db.delete(users).where(eq(users.id, id)).run();
-		return { success: true };
+		if (u.unitId) {
+			if (
+				(u.role === 'KABAG OPS' ||
+					u.role === 'ADMIN POLRES' ||
+					u.role === 'KAPOLRES' ||
+					u.role === 'WAKAPOLRES') &&
+				!getPolresIfUnderPolda(u.unitId, pid)
+			)
+				return fail(403, { error: 'Tidak diizinkan.' });
+			if (
+				(u.role === 'KATIM PATROLI' ||
+					u.role === 'ADMIN POLSEK' ||
+					u.role === 'KAPOLSEK' ||
+					u.role === 'WAKAPOLSEK' ||
+					u.role === 'KANIT SAMAPTA') &&
+				!getPolsekIfUnderPolda(u.unitId, pid)
+			)
+				return fail(403, { error: 'Tidak diizinkan.' });
+		}
+
+		// Hindari 500 dari foreign key constraint: cek relasi data dahulu.
+		const hasVuln = db.select({ id: vulnerabilityPoints.id }).from(vulnerabilityPoints).where(eq(vulnerabilityPoints.createdBy, id)).get();
+		if (hasVuln) return fail(400, { error: 'Tidak bisa hapus personil: masih ada titik rawan yang dibuat oleh akun ini.' });
+
+		const hasRengiatCreated = db.select({ id: rengiat.id }).from(rengiat).where(eq(rengiat.createdBy, id)).get();
+		if (hasRengiatCreated) return fail(400, { error: 'Tidak bisa hapus personil: masih ada Rengiat yang dibuat oleh akun ini.' });
+
+		const hasRengiatReviewed = db.select({ id: rengiat.id }).from(rengiat).where(eq(rengiat.reviewedBy, id)).get();
+		if (hasRengiatReviewed) return fail(400, { error: 'Tidak bisa hapus personil: akun ini tercatat sebagai reviewer Rengiat.' });
+
+		const hasRengiatApproved = db.select({ id: rengiat.id }).from(rengiat).where(eq(rengiat.approvedBy, id)).get();
+		if (hasRengiatApproved) return fail(400, { error: 'Tidak bisa hapus personil: akun ini tercatat sebagai approver Rengiat.' });
+
+		const hasReports = db.select({ id: activityReports.id }).from(activityReports).where(eq(activityReports.userId, id)).get();
+		if (hasReports) return fail(400, { error: 'Tidak bisa hapus personil: masih ada laporan kegiatan (LHP) yang dibuat oleh akun ini.' });
+
+		const hasField = db.select({ id: fieldGiatSessions.id }).from(fieldGiatSessions).where(eq(fieldGiatSessions.userId, id)).get();
+		if (hasField) return fail(400, { error: 'Tidak bisa hapus personil: masih ada sesi Field Giat yang terkait akun ini.' });
+
+		const hasIncident = db.select({ id: notableIncidents.id }).from(notableIncidents).where(eq(notableIncidents.createdBy, id)).get();
+		if (hasIncident) return fail(400, { error: 'Tidak bisa hapus personil: masih ada insiden menonjol yang dibuat oleh akun ini.' });
+
+		const hasIntel = db.select({ id: polsekIntelNotes.id }).from(polsekIntelNotes).where(eq(polsekIntelNotes.createdBy, id)).get();
+		if (hasIntel) return fail(400, { error: 'Tidak bisa hapus personil: masih ada catatan intel yang dibuat oleh akun ini.' });
+
+		try {
+			db.delete(sessions).where(eq(sessions.userId, id)).run();
+			// Audit log tetap disimpan, tapi dilepas dari user (user_id -> NULL).
+			// Simpan snapshot actor agar histori tidak "kosong" di halaman audit.
+			const unitNama = u.unitId ? db.select({ nama: units.nama }).from(units).where(eq(units.id, u.unitId)).get()?.nama : null;
+			db.update(auditLogs)
+				.set({
+					actorUsername: u.username,
+					actorNama: u.nama,
+					actorRole: u.role,
+					actorUnitId: u.unitId ?? null,
+					actorUnitNama: unitNama ?? null,
+					userId: null
+				})
+				.where(and(eq(auditLogs.userId, id), isNull(auditLogs.actorNama)))
+				.run();
+			// Untuk baris yang sudah punya snapshot, cukup detach FK-nya saja.
+			db.update(auditLogs).set({ userId: null }).where(eq(auditLogs.userId, id)).run();
+			db.delete(users).where(eq(users.id, id)).run();
+			return { success: true };
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			return fail(500, { error: `Gagal menghapus personil. (${msg})` });
+		}
 	},
 
 	setUnitMarker: async ({ request, locals }) => {
@@ -274,7 +460,43 @@ export const actions: Actions = {
 		const polres = getPolresIfUnderPolda(unitId, pid);
 		const polsek = getPolsekIfUnderPolda(unitId, pid);
 		if (!polres && !polsek) return fail(403, { error: 'Unit tidak dalam wilayah Anda.' });
-		db.update(units).set({ lat, lng }).where(eq(units.id, unitId)).run();
-		return { success: true };
+		// Serialize + dedupe per unitId to avoid request storms causing SQLITE_BUSY.
+		const g = globalThis as unknown as {
+			__satwilUnitMarkerInFlight?: Map<number, Promise<{ ok: boolean; error?: string }>>;
+		};
+		if (!g.__satwilUnitMarkerInFlight) g.__satwilUnitMarkerInFlight = new Map();
+
+		const existing = g.__satwilUnitMarkerInFlight.get(unitId);
+		if (existing) {
+			const r = await existing;
+			return r.ok ? { success: true } : fail(503, { error: r.error ?? 'Database sedang sibuk.' });
+		}
+
+		const task = (async () => {
+			try {
+				// Dengan sqlite timeout/busy_timeout 60 detik, query ini akan menunggu lock.
+				db.update(units).set({ lat, lng }).where(eq(units.id, unitId)).run();
+				return { ok: true as const };
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : String(e);
+				console.warn('[satwil.setUnitMarker] failed', {
+					unitId,
+					userId: locals.user?.id,
+					msg
+				});
+				if (msg.toLowerCase().includes('database is locked')) {
+					return { ok: false as const, error: 'Database sedang sibuk. Coba lagi beberapa detik.' };
+				}
+				return { ok: false as const, error: `Gagal menyimpan lokasi. (${msg})` };
+			}
+		})().finally(() => {
+			g.__satwilUnitMarkerInFlight?.delete(unitId);
+		});
+
+		g.__satwilUnitMarkerInFlight.set(unitId, task);
+		const r = await task;
+		if (r.ok) return { success: true };
+		if (r.error?.startsWith('Gagal menyimpan lokasi')) return fail(500, { error: r.error });
+		return fail(503, { error: r.error ?? 'Database sedang sibuk. Coba lagi beberapa detik.' });
 	}
 };

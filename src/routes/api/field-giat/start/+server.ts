@@ -4,7 +4,16 @@ import { startFieldGiatSession } from '$lib/server/field-giat';
 
 export const POST: RequestHandler = async (event) => {
 	const u = event.locals.user;
-	if (!u || u.role !== 'POLSEK' || u.polresId == null || u.unitId == null) {
+	if (
+		!u ||
+		(u.role !== 'KATIM PATROLI' &&
+			u.role !== 'ADMIN POLSEK' &&
+			u.role !== 'KAPOLSEK' &&
+			u.role !== 'WAKAPOLSEK' &&
+			u.role !== 'KANIT SAMAPTA') ||
+		u.polresId == null ||
+		u.unitId == null
+	) {
 		error(403, 'Unauthorized');
 	}
 	let body: { rengiat_id?: number; lat?: number; lng?: number };

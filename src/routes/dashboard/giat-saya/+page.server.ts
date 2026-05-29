@@ -9,7 +9,13 @@ import { getActiveSessionsForPolsekUser } from '$lib/server/field-giat';
 export const load: PageServerLoad = async ({ parent }) => {
 	const { user } = await parent();
 
-	if (user!.role !== 'POLSEK') {
+	if (
+		user!.role !== 'KATIM PATROLI' &&
+		user!.role !== 'ADMIN POLSEK' &&
+		user!.role !== 'KAPOLSEK' &&
+		user!.role !== 'WAKAPOLSEK' &&
+		user!.role !== 'KANIT SAMAPTA'
+	) {
 		redirect(302, '/dashboard');
 	}
 

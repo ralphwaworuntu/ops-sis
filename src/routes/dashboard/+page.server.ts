@@ -39,7 +39,14 @@ export const load: PageServerLoad = async ({ parent }) => {
 		};
 	}
 
-	if (user.role === 'POLSEK' && user.polresId != null) {
+	if (
+		(user.role === 'ADMIN POLSEK' ||
+			user.role === 'KATIM PATROLI' ||
+			user.role === 'KAPOLSEK' ||
+			user.role === 'WAKAPOLSEK' ||
+			user.role === 'KANIT SAMAPTA') &&
+		user.polresId != null
+	) {
 		const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
 		const pendingAccRow = db
@@ -206,7 +213,13 @@ export const load: PageServerLoad = async ({ parent }) => {
 		};
 	}
 
-	if (user.role === 'POLRES' && user.unitId != null) {
+	if (
+		(user.role === 'ADMIN POLRES' ||
+			user.role === 'KABAG OPS' ||
+			user.role === 'KAPOLRES' ||
+			user.role === 'WAKAPOLRES') &&
+		user.unitId != null
+	) {
 		const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 		const polsekRows = db
 			.select({ id: units.id, nama: units.nama })
@@ -347,7 +360,20 @@ export const load: PageServerLoad = async ({ parent }) => {
 export const actions: Actions = {
 	notableIncident: async (event) => {
 		const { locals, request, getClientAddress } = event;
-		if (!locals.user || !['POLSEK', 'POLRES'].includes(locals.user.role)) {
+		if (
+			!locals.user ||
+			![
+				'ADMIN POLSEK',
+				'KATIM PATROLI',
+				'KAPOLSEK',
+				'WAKAPOLSEK',
+				'KANIT SAMAPTA',
+				'ADMIN POLRES',
+				'KABAG OPS',
+				'KAPOLRES',
+				'WAKAPOLRES'
+			].includes(locals.user.role)
+		) {
 			return fail(403, { error: 'Unauthorized' });
 		}
 		const data = await request.formData();
@@ -388,10 +414,28 @@ export const actions: Actions = {
 			fotoPath = await saveFile(foto, 'kejadian-menonjol');
 		}
 
-		const role = locals.user.role as 'POLSEK' | 'POLRES';
+		const role = locals.user.role as
+			| 'ADMIN POLSEK'
+			| 'KATIM PATROLI'
+			| 'KAPOLSEK'
+			| 'WAKAPOLSEK'
+			| 'KANIT SAMAPTA'
+			| 'ADMIN POLRES'
+			| 'KABAG OPS'
+			| 'KAPOLRES'
+			| 'WAKAPOLRES';
 		const unitId = locals.user.unitId!;
 		const polresId =
-			role === 'POLRES' ? locals.user.unitId! : (locals.user.polresId ?? locals.user.unitId!);
+			role === 'ADMIN POLRES' ||
+			role === 'KABAG OPS' ||
+			role === 'KAPOLRES' ||
+			role === 'WAKAPOLRES'
+				? locals.user.unitId!
+				: (locals.user.polresId ?? locals.user.unitId!);
+		const incidentRole =
+			role === 'ADMIN POLRES' || role === 'KABAG OPS' || role === 'KAPOLRES' || role === 'WAKAPOLRES'
+				? ('POLRES' as const)
+				: ('POLSEK' as const);
 
 		const inserted = db
 			.insert(notableIncidents)
@@ -402,7 +446,7 @@ export const actions: Actions = {
 				lat,
 				lng,
 				accuracyMeters: accuracyMeters != null && !Number.isNaN(accuracyMeters) ? accuracyMeters : null,
-				role,
+				role: incidentRole,
 				unitId,
 				polresId,
 				createdBy: locals.user.id
@@ -432,7 +476,7 @@ export const actions: Actions = {
 				lat,
 				lng,
 				createdAt,
-				role,
+				role: incidentRole,
 				unitId,
 				unitNama: unitRow?.nama ?? '',
 				polresId,

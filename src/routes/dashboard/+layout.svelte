@@ -58,7 +58,14 @@
 				if (payload.type === 'field_giat_update') {
 					const d = payload.data as { polresId?: number };
 					const u = data.user;
-					if (u.role === 'POLRES' && typeof d.polresId === 'number' && u.unitId === d.polresId) {
+					if (
+						(u.role === 'ADMIN POLRES' ||
+							u.role === 'KABAG OPS' ||
+							u.role === 'KAPOLRES' ||
+							u.role === 'WAKAPOLRES') &&
+						typeof d.polresId === 'number' &&
+						u.unitId === d.polresId
+					) {
 						void invalidateAll();
 					}
 					return;
@@ -73,7 +80,11 @@
 					};
 					const u = data.user;
 					if (
-						u.role === 'POLSEK' &&
+						(u.role === 'ADMIN POLSEK' ||
+							u.role === 'KATIM PATROLI' ||
+							u.role === 'KAPOLSEK' ||
+							u.role === 'WAKAPOLSEK' ||
+							u.role === 'KANIT SAMAPTA') &&
 						typeof d.targetUserId === 'number' &&
 						u.id === d.targetUserId &&
 						typeof d.polresId === 'number' &&
@@ -100,10 +111,25 @@
 					if (Array.isArray(d.notifyRoles) && d.notifyRoles.length > 0) {
 						showToast = d.notifyRoles.includes(u.role);
 					}
-					if (showToast && u.role === 'POLRES' && typeof d.polresId === 'number') {
+					if (
+						showToast &&
+						(u.role === 'ADMIN POLRES' ||
+							u.role === 'KABAG OPS' ||
+							u.role === 'KAPOLRES' ||
+							u.role === 'WAKAPOLRES') &&
+						typeof d.polresId === 'number'
+					) {
 						showToast = u.unitId === d.polresId;
 					}
-					if (showToast && u.role === 'POLSEK' && typeof d.polresId === 'number') {
+					if (
+						showToast &&
+						(u.role === 'ADMIN POLSEK' ||
+							u.role === 'KATIM PATROLI' ||
+							u.role === 'KAPOLSEK' ||
+							u.role === 'WAKAPOLSEK' ||
+							u.role === 'KANIT SAMAPTA') &&
+						typeof d.polresId === 'number'
+					) {
 						showToast = d.polresId === u.polresId;
 					}
 					if (showToast) {
@@ -112,7 +138,13 @@
 							type: 'success',
 							message: msg
 						});
-						if (u.role === 'POLSEK') {
+						if (
+							u.role === 'ADMIN POLSEK' ||
+							u.role === 'KATIM PATROLI' ||
+							u.role === 'KAPOLSEK' ||
+							u.role === 'WAKAPOLSEK' ||
+							u.role === 'KANIT SAMAPTA'
+						) {
 							activityFeed.push(msg);
 						}
 					}
@@ -134,7 +166,12 @@
 	});
 
 	const isPolsekGiatSaya = $derived(
-		data.user.role === 'POLSEK' && $page.url.pathname.startsWith('/dashboard/giat-saya')
+		(data.user.role === 'ADMIN POLSEK' ||
+			data.user.role === 'KATIM PATROLI' ||
+			data.user.role === 'KAPOLSEK' ||
+			data.user.role === 'WAKAPOLSEK' ||
+			data.user.role === 'KANIT SAMAPTA') &&
+			$page.url.pathname.startsWith('/dashboard/giat-saya')
 	);
 
 	const navItems = $derived(getNavItems(data.user.role));
@@ -144,7 +181,12 @@
 			{ href: '/dashboard', label: 'Dashboard', icon: 'home' },
 			{ href: '/dashboard/peta', label: 'Peta Rawan', icon: 'map' }
 		];
-		if (role === 'POLRES') {
+		if (
+			role === 'KABAG OPS' ||
+			role === 'ADMIN POLRES' ||
+			role === 'KAPOLRES' ||
+			role === 'WAKAPOLRES'
+		) {
 			items.push({ href: '/dashboard/rengiat', label: 'Rengiat', icon: 'file' });
 			items.push({ href: '/dashboard/verifikasi-lhp', label: 'Verifikasi LHP', icon: 'check' });
 			items.push({ href: '/dashboard/monitoring', label: 'Monitoring', icon: 'chart' });
@@ -153,16 +195,21 @@
 			items.push({ href: '/dashboard/rengiat', label: 'Review Rengiat', icon: 'file' });
 			items.push({ href: '/dashboard/monitoring', label: 'Monitoring', icon: 'chart' });
 			items.push({ href: '/dashboard/laporan', label: 'Laporan', icon: 'clipboard' });
-			items.push({ href: '/live-wall', label: 'Live Wall', icon: 'wall' });
 			items.push({ href: '/dashboard/admin/satwil', label: 'Admin Satwil', icon: 'settings' });
+			items.push({ href: '/dashboard/admin/audit', label: 'Audit Log', icon: 'file' });
 		}
 		if (role === 'KARO OPS') {
 			items.push({ href: '/dashboard/rengiat', label: 'Approval', icon: 'check' });
 			items.push({ href: '/dashboard/monitoring', label: 'Monitoring', icon: 'chart' });
 			items.push({ href: '/dashboard/laporan', label: 'Laporan', icon: 'clipboard' });
-			items.push({ href: '/live-wall', label: 'Live Wall', icon: 'wall' });
 		}
-		if (role === 'POLSEK') {
+		if (
+			role === 'KATIM PATROLI' ||
+			role === 'ADMIN POLSEK' ||
+			role === 'KAPOLSEK' ||
+			role === 'WAKAPOLSEK' ||
+			role === 'KANIT SAMAPTA'
+		) {
 			items.push({ href: '/dashboard/giat-saya', label: 'Giat Saya', icon: 'activity' });
 		}
 		return items;
@@ -190,6 +237,9 @@
 			'M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9zM4 12a8 8 0 1116 0 8 8 0 01-16 0z',
 		wall: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'
 	};
+
+	const LIVE_TRACKING_URL = 'https://isharing.me/apps/isharing';
+	const canSeeLiveTracking = $derived(['POLDA', 'KARO OPS'].includes(data.user.role));
 
 	function toggleSidebar() {
 		if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
@@ -248,6 +298,23 @@
 				</a>
 			{/each}
 		</nav>
+
+		{#if canSeeLiveTracking}
+			<div class="border-t border-sidebar-border p-4">
+				<a
+					href={LIVE_TRACKING_URL}
+					target="_blank"
+					rel="noreferrer"
+					class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-600/90 active:scale-[0.99]"
+					title="Buka Live Tracking (tab baru)"
+				>
+					<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d={iconMap.eye} />
+					</svg>
+					Live Tracking
+				</a>
+			</div>
+		{/if}
 
 		<div class="border-t border-sidebar-border p-4">
 			<div class="mb-3 flex items-center gap-3">
@@ -317,8 +384,27 @@
 					{/each}
 				</nav>
 
-				<div class="absolute bottom-0 left-0 right-0 border-t border-sidebar-border p-4">
-					<div class="mb-3 flex items-center gap-3">
+				<div class="absolute bottom-0 left-0 right-0">
+					{#if canSeeLiveTracking}
+						<div class="border-t border-sidebar-border p-4">
+							<a
+								href={LIVE_TRACKING_URL}
+								target="_blank"
+								rel="noreferrer"
+								class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600/90 active:scale-[0.99]"
+								onclick={() => (sidebarOpen = false)}
+								title="Buka Live Tracking (tab baru)"
+							>
+								<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+									<path stroke-linecap="round" stroke-linejoin="round" d={iconMap.eye} />
+								</svg>
+								Live Tracking
+							</a>
+						</div>
+					{/if}
+
+					<div class="border-t border-sidebar-border p-4">
+						<div class="mb-3 flex items-center gap-3">
 						<div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
 							{data.user.nama.charAt(0)}
 						</div>
@@ -337,6 +423,7 @@
 							Keluar
 						</button>
 					</form>
+					</div>
 				</div>
 			</aside>
 		</div>
@@ -371,7 +458,7 @@
 				>
 					{online ? 'Online' : 'Offline'}
 				</span>
-				{#if data.user.role === 'POLSEK' && outboxPending > 0}
+				{#if (data.user.role === 'ADMIN POLSEK' || data.user.role === 'KATIM PATROLI' || data.user.role === 'KAPOLSEK' || data.user.role === 'WAKAPOLSEK' || data.user.role === 'KANIT SAMAPTA') && outboxPending > 0}
 					<span
 						class="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
 					>
@@ -390,7 +477,7 @@
 				? 'pb-32 md:pb-32 lg:pb-32'
 				: ''}"
 		>
-			{#if data.user.role === 'POLSEK' && outboxPending > 0}
+			{#if (data.user.role === 'ADMIN POLSEK' || data.user.role === 'KATIM PATROLI' || data.user.role === 'KAPOLSEK' || data.user.role === 'WAKAPOLSEK' || data.user.role === 'KANIT SAMAPTA') && outboxPending > 0}
 				<div class="mb-3 sm:hidden">
 					<span
 						class="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-950"

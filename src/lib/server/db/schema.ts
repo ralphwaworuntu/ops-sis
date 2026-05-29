@@ -19,7 +19,22 @@ export const users = sqliteTable('users', {
 	nama: text('nama').notNull(),
 	nrp: text('nrp').notNull().default(''),
 	pangkat: text('pangkat').notNull(),
-	role: text('role', { enum: ['POLSEK', 'POLRES', 'POLDA', 'KARO OPS'] }).notNull(),
+	role: text('role', {
+		enum: [
+			'POLSEK',
+			'KATIM PATROLI',
+			'ADMIN POLSEK',
+			'KAPOLSEK',
+			'WAKAPOLSEK',
+			'KANIT SAMAPTA',
+			'KABAG OPS',
+			'ADMIN POLRES',
+			'KAPOLRES',
+			'WAKAPOLRES',
+			'POLDA',
+			'KARO OPS'
+		]
+	}).notNull(),
 	unitId: integer('unit_id').references(() => units.id),
 	createdAt: text('created_at')
 		.notNull()
@@ -171,7 +186,13 @@ export const activityReports = sqliteTable('activity_reports', {
 
 export const auditLogs = sqliteTable('audit_logs', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	userId: integer('user_id').references(() => users.id),
+	userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+	/** Snapshot actor untuk histori audit walau user/unit terhapus. */
+	actorUsername: text('actor_username'),
+	actorNama: text('actor_nama'),
+	actorRole: text('actor_role'),
+	actorUnitId: integer('actor_unit_id'),
+	actorUnitNama: text('actor_unit_nama'),
 	action: text('action').notNull(),
 	entityType: text('entity_type'),
 	entityId: integer('entity_id'),

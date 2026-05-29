@@ -16,7 +16,7 @@
 	let submittingNotable = $state(false);
 
 	const canReportNotable = $derived(
-		data.user?.role === 'POLSEK' || data.user?.role === 'POLRES'
+		['ADMIN POLSEK','KATIM PATROLI','KAPOLSEK','WAKAPOLSEK','KANIT SAMAPTA','ADMIN POLRES','KABAG OPS','KAPOLRES','WAKAPOLRES'].includes(data.user?.role ?? '')
 	);
 
 	function startGpsFetch() {
@@ -388,7 +388,7 @@
 
 	<!-- Quick Actions (role-specific) -->
 	<div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-		{#if data.user?.role === 'POLRES'}
+		{#if ['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES'].includes(data.user?.role ?? '')}
 			<a
 				href="/dashboard/rengiat/baru"
 				class="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
@@ -419,7 +419,7 @@
 			</a>
 		{/if}
 
-		{#if data.user?.role === 'POLSEK'}
+		{#if ['ADMIN POLSEK', 'KATIM PATROLI', 'KAPOLSEK', 'WAKAPOLSEK', 'KANIT SAMAPTA'].includes(data.user?.role ?? '')}
 			<a
 				href="/dashboard/giat-saya"
 				class="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"

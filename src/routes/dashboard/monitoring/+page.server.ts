@@ -9,7 +9,13 @@ import { listActiveFieldSessionsForPolres } from '$lib/server/field-giat';
 export const load: PageServerLoad = async ({ parent, url }) => {
 	const { user } = await parent();
 
-	if (user!.role === 'POLRES' && user!.unitId != null) {
+	if (
+		(user!.role === 'KABAG OPS' ||
+			user!.role === 'ADMIN POLRES' ||
+			user!.role === 'KAPOLRES' ||
+			user!.role === 'WAKAPOLRES') &&
+		user!.unitId != null
+	) {
 		const fieldActive = listActiveFieldSessionsForPolres(user.unitId);
 		return {
 			mode: 'polres' as const,

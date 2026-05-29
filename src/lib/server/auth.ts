@@ -5,7 +5,18 @@ import bcryptjs from 'bcryptjs';
 const { compareSync } = bcryptjs;
 import crypto from 'crypto';
 
-export type UserRole = 'POLSEK' | 'POLRES' | 'POLDA' | 'KARO OPS';
+export type UserRole =
+	| 'KATIM PATROLI'
+	| 'ADMIN POLSEK'
+	| 'KAPOLSEK'
+	| 'WAKAPOLSEK'
+	| 'KANIT SAMAPTA'
+	| 'KABAG OPS'
+	| 'ADMIN POLRES'
+	| 'KAPOLRES'
+	| 'WAKAPOLRES'
+	| 'POLDA'
+	| 'KARO OPS';
 
 export interface SessionUser {
 	id: number;
@@ -26,7 +37,14 @@ function withPolresScope(
 ): SessionUser {
 	let polresId: number | null = null;
 	let polresNama: string | null = null;
-	if (row.role === 'POLSEK' && row.unitId != null) {
+	if (
+		(row.role === 'KATIM PATROLI' ||
+			row.role === 'ADMIN POLSEK' ||
+			row.role === 'KAPOLSEK' ||
+			row.role === 'WAKAPOLSEK' ||
+			row.role === 'KANIT SAMAPTA') &&
+		row.unitId != null
+	) {
 		const u = db.select().from(units).where(eq(units.id, row.unitId)).get();
 		if (u?.tipe === 'POLSEK' && u.parentId != null) {
 			polresId = u.parentId;

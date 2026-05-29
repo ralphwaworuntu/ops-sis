@@ -29,7 +29,7 @@ sqlite.exec(`
     password_hash TEXT NOT NULL,
     nama TEXT NOT NULL,
     pangkat TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('POLSEK','POLRES','POLDA','KARO OPS')),
+    role TEXT NOT NULL CHECK(role IN ('KATIM PATROLI','ADMIN POLSEK','KAPOLSEK','WAKAPOLSEK','KANIT SAMAPTA','KABAG OPS','ADMIN POLRES','KAPOLRES','WAKAPOLRES','POLDA','KARO OPS')),
     unit_id INTEGER REFERENCES units(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -138,7 +138,7 @@ db.insert(schema.users)
 			nama: 'Kompol Budi Santoso',
 			nrp: '66110001',
 			pangkat: 'Kompol',
-			role: 'POLRES',
+			role: 'ADMIN POLRES',
 			unitId: 2
 		},
 		{
@@ -147,7 +147,7 @@ db.insert(schema.users)
 			nama: 'Kompol Dewi Lestari',
 			nrp: '66110002',
 			pangkat: 'Kompol',
-			role: 'POLRES',
+			role: 'ADMIN POLRES',
 			unitId: 3
 		},
 		{
@@ -156,7 +156,7 @@ db.insert(schema.users)
 			nama: 'AKP Hendra Gunawan',
 			nrp: '55120001',
 			pangkat: 'AKP',
-			role: 'POLSEK',
+			role: 'ADMIN POLSEK',
 			unitId: 4
 		},
 		{
@@ -165,7 +165,7 @@ db.insert(schema.users)
 			nama: 'AKP Siti Nurhaliza',
 			nrp: '55120002',
 			pangkat: 'AKP',
-			role: 'POLSEK',
+			role: 'ADMIN POLSEK',
 			unitId: 5
 		}
 	])

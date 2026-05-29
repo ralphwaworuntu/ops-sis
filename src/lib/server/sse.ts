@@ -11,7 +11,21 @@ export interface SSEEvent {
 	data: Record<string, unknown> & {
 		message?: string;
 		/** Hanya peran ini yang melihat toast; kosong/undefined = semua peran. */
-		notifyRoles?: ('POLDA' | 'KARO OPS' | 'POLRES' | 'POLSEK')[];
+		notifyRoles?: (
+			| 'POLDA'
+			| 'KARO OPS'
+			| 'POLRES'
+			| 'KABAG OPS'
+			| 'ADMIN POLRES'
+			| 'KAPOLRES'
+			| 'WAKAPOLRES'
+			| 'POLSEK'
+			| 'KATIM PATROLI'
+			| 'ADMIN POLSEK'
+			| 'KAPOLSEK'
+			| 'WAKAPOLSEK'
+			| 'KANIT SAMAPTA'
+		)[];
 		/** Untuk toast yang hanya relevan bagi POLRES wilayah tertentu. */
 		polresId?: number;
 		/** Untuk notifikasi verifikasi LHP ke satu personil POLSEK. */

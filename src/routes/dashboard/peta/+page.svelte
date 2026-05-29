@@ -2,7 +2,6 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
-	import SatwilFilter from '$lib/components/SatwilFilter.svelte';
 	import { POLSEK_MAP_LOCK_RADIUS_M } from '$lib/geo-constants';
 	import { installThemedRasterBaseLayer } from '$lib/client/leaflet-themed-tiles';
 
@@ -49,6 +48,69 @@
 
 	const isPolsek = $derived(data.viewMode === 'polsek');
 
+	// Quick search POLRES/POLSEK (markas) pada peta
+	type HqSearchItem = { id: number; nama: string; tipe: string; lat: number; lng: number };
+	let hqSearch = $state('');
+	let hqSearchOpen = $state(false);
+	let hqSearchActiveIndex = $state(0);
+	let hqSearchSelected: HqSearchItem | null = $state(null);
+	let hqSearchInputEl: HTMLInputElement | null = $state(null);
+	const hqMarkerById = $state<Map<number, import('leaflet').Marker>>(new Map());
+
+	function normalizeHqQuery(q: string): string {
+		return q
+			.toLowerCase()
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.replace(/[^a-z0-9\s]/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim();
+	}
+
+	const hqItems = $derived.by((): HqSearchItem[] => {
+		const list = (data.hqMarkers ?? []) as { id: number; nama: string; tipe: string; lat: number; lng: number }[];
+		return list
+			.filter((x) => x.lat != null && x.lng != null)
+			.map((x) => ({ id: x.id, nama: x.nama, tipe: x.tipe, lat: x.lat, lng: x.lng }));
+	});
+
+	function scoreHq(qRaw: string, it: HqSearchItem): number {
+		const q = normalizeHqQuery(qRaw);
+		if (!q) return 0;
+		const label = normalizeHqQuery(`${it.tipe} ${it.nama}`);
+		if (label === q) return 300;
+		if (label.startsWith(q)) return 220;
+		if (label.includes(` ${q}`)) return 180;
+		if (label.includes(q)) return 140;
+		const tokens = q.split(' ').filter(Boolean);
+		let tokScore = 0;
+		for (const t of tokens) {
+			if (t.length < 2) continue;
+			if (label.includes(t)) tokScore += 28;
+		}
+		return tokScore;
+	}
+
+	const hqResults = $derived.by((): HqSearchItem[] => {
+		const q = hqSearch;
+		if (!normalizeHqQuery(q)) return [];
+		return hqItems
+			.map((it) => ({ it, s: scoreHq(q, it) }))
+			.filter((x) => x.s > 0)
+			.sort((a, b) => b.s - a.s || a.it.nama.localeCompare(b.it.nama))
+			.slice(0, 12)
+			.map((x) => x.it);
+	});
+
+	function focusHqOnMap(it: HqSearchItem) {
+		hqSearchSelected = it;
+		hqSearchOpen = false;
+		hqSearchActiveIndex = 0;
+		if (!map) return;
+		map.flyTo([it.lat, it.lng], 12, { duration: 0.9 });
+		hqMarkerById.get(it.id)?.openPopup();
+	}
+
 	const tacticalPoint = $derived(
 		tacticalTargetId == null ? null : (data.points.find((p) => p.id === tacticalTargetId) ?? null)
 	);
@@ -57,27 +119,20 @@
 
 	const crimeTypes = ['C3', 'Narkoba', 'Tawuran', 'Pencurian', 'Penipuan', 'Penganiayaan', 'Kerumunan', 'Lainnya'];
 
-	const crimeColors: Record<string, string> = {
-		C3: '#ef4444',
-		Narkoba: '#8b5cf6',
-		Tawuran: '#f97316',
-		Pencurian: '#eab308',
-		Penipuan: '#3b82f6',
-		Penganiayaan: '#dc2626',
-		Kerumunan: '#ca8a04',
-		Lainnya: '#6b7280'
-	};
+	/**
+	 * Warna kerawanan (3 level saja) berdasarkan jumlah kasus (frekuensi).
+	 * - Hijau: 1
+	 * - Kuning: 2–5
+	 * - Merah: >5
+	 */
+	function severityColor(freq: number): string {
+		if (freq > 5) return '#dc2626'; // red-600
+		if (freq >= 2) return '#f59e0b'; // amber-500
+		return '#16a34a'; // green-600
+	}
 
-	const crimeLegendHq = $derived(
-		Object.entries(crimeColors).filter(([k]) => k !== 'Kerumunan') as [string, string][]
-	);
-
-	function markerColorForPoint(pt: { jenisKejahatan: string; origin?: string | null }) {
-		if (pt.origin === 'polda') return '#7c3aed';
-		const base = crimeColors[pt.jenisKejahatan] ?? '#6b7280';
-		if (isPolsek && pt.origin === 'polsek') return '#f59e0b';
-		if (isPolsek && (pt.origin === 'polres' || !pt.origin)) return '#dc2626';
-		return base;
+	function markerColorForPoint(pt: { frekuensi: number; origin?: string | null }) {
+		return severityColor(pt.frekuensi);
 	}
 
 	$effect(() => {
@@ -123,10 +178,32 @@
 		hqGroup.clearLayers();
 		radiusGroup.clearLayers();
 		patrolRingGroup.clearLayers();
+		hqMarkerById.clear();
+
+		// Ikon satwil (samakan dengan halaman Admin Satwil)
+		const polresIcon = L.icon({
+			iconUrl: '/markers/polres.png',
+			iconSize: [46, 46],
+			iconAnchor: [23, 45],
+			popupAnchor: [0, -40]
+		});
+		const polsekIcon = L.icon({
+			iconUrl: '/markers/polsek.png',
+			iconSize: [46, 46],
+			iconAnchor: [23, 45],
+			popupAnchor: [0, -40]
+		});
+		const poldaIcon = L.icon({
+			iconUrl: '/markers/polda.png',
+			iconSize: [46, 46],
+			iconAnchor: [23, 45],
+			popupAnchor: [0, -40]
+		});
 
 		for (const pt of data.points) {
 			const color = markerColorForPoint(pt);
-			const border = isPolsek && pt.origin === 'polsek' ? '3px solid #fbbf24' : '3px solid white';
+			// Tetap beri border untuk membedakan temuan POLSEK vs referensi (tanpa menambah varian warna).
+			const border = isPolsek && pt.origin === 'polsek' ? '3px solid #111827' : '3px solid white';
 			const icon = L.divIcon({
 				className: '',
 				html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;border:${border};box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;">
@@ -185,13 +262,7 @@
 					fillOpacity: 0.06
 				}).addTo(patrolRingGroup);
 			}
-			const hqIcon = L.divIcon({
-				className: '',
-				html: `<div style="width:20px;height:20px;border-radius:50%;background:#f59e0b;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);"></div>`,
-				iconSize: [20, 20],
-				iconAnchor: [10, 10]
-			});
-			L.marker([lat, lng], { icon: hqIcon })
+			L.marker([lat, lng], { icon: polsekIcon })
 				.addTo(hqGroup)
 				.bindPopup(
 					`<strong>Markas POLSEK</strong><br/><span style="font-size:11px">Radius wajib patroli: 250m–1km</span>`
@@ -199,19 +270,21 @@
 		}
 
 		if (!isPolsek) {
+			// Samakan dengan Admin Satwil: marker tetap POLDA NTT (Kupang).
+			const POLDA_NTT: [number, number] = [-10.1777143, 123.5976401];
+			L.marker(POLDA_NTT, { icon: poldaIcon })
+				.addTo(hqGroup)
+				.bindPopup('<strong>POLDA NTT</strong><br/>Kupang');
+
 			for (const hq of data.hqMarkers ?? []) {
 				if (hq.lat == null || hq.lng == null) continue;
-				const icon = L.divIcon({
-					className: '',
-					html: `<div style="background:#1e3a8a;width:22px;height:22px;border-radius:4px;border:2px solid #d4af37;box-shadow:0 2px 6px rgba(0,0,0,.35);"></div>`,
-					iconSize: [22, 22],
-					iconAnchor: [11, 11]
-				});
-				L.marker([hq.lat, hq.lng], { icon })
+				const icon = hq.tipe === 'POLDA' ? poldaIcon : hq.tipe === 'POLSEK' ? polsekIcon : polresIcon;
+				const m = L.marker([hq.lat, hq.lng], { icon })
 					.addTo(hqGroup)
 					.bindPopup(
 						`<div style="font-family:system-ui,sans-serif;"><strong>${hq.nama}</strong><br/><span style="font-size:11px;color:#64748b">${hq.tipe}</span></div>`
 					);
+				hqMarkerById.set(hq.id, m);
 			}
 		}
 
@@ -487,17 +560,6 @@
 		</div>
 	{/if}
 
-	{#if data.showSatwilFilter}
-		<div class="rounded-xl border border-border bg-card p-4 shadow-sm">
-			<SatwilFilter polresList={data.polresList} />
-			{#if data.polresFilter}
-				<p class="mt-2 text-xs text-muted-foreground">
-					Menampilkan titik rawan wilayah terpilih. Klaster akan terurai saat zoom-in. Kotak biru-emas = markas.
-				</p>
-			{/if}
-		</div>
-	{/if}
-
 	<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 		<div>
 			<h1 class="text-xl font-bold tracking-tight text-foreground md:text-2xl">
@@ -517,26 +579,88 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2">
-			<button
-				type="button"
-				onclick={toggleMapFullscreen}
-				class="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted/60"
-				aria-pressed={mapFullscreen}
-				aria-label={mapFullscreen ? 'Keluar layar penuh peta' : 'Layar penuh peta'}
-				title={mapFullscreen ? 'Keluar layar penuh (Esc)' : 'Layar penuh peta'}
-			>
-				{#if mapFullscreen}
-					<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
-					</svg>
-					Keluar layar penuh
-				{:else}
-					<svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-					</svg>
-					Layar penuh
-				{/if}
-			</button>
+			{#if !isPolsek}
+				<div class="relative w-full sm:w-[420px]">
+					<label class="sr-only" for="hq-search">Cari POLRES / POLSEK</label>
+					<input
+						bind:this={hqSearchInputEl}
+						id="hq-search"
+						type="text"
+						value={hqSearch}
+						placeholder="Cari POLRES / POLSEK…"
+						class="h-11 w-full rounded-lg border border-input bg-background px-3 text-base shadow-sm"
+						autocomplete="off"
+						oninput={(e) => {
+							hqSearch = (e.currentTarget as HTMLInputElement).value;
+							hqSearchOpen = true;
+							hqSearchActiveIndex = 0;
+						}}
+						onfocus={() => {
+							hqSearchOpen = true;
+						}}
+						onkeydown={(e) => {
+							if (!hqSearchOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+								hqSearchOpen = true;
+								return;
+							}
+							if (!hqSearchOpen) return;
+							if (e.key === 'Escape') {
+								hqSearchOpen = false;
+								return;
+							}
+							if (e.key === 'ArrowDown') {
+								e.preventDefault();
+								hqSearchActiveIndex = Math.min(hqSearchActiveIndex + 1, hqResults.length - 1);
+								return;
+							}
+							if (e.key === 'ArrowUp') {
+								e.preventDefault();
+								hqSearchActiveIndex = Math.max(hqSearchActiveIndex - 1, 0);
+								return;
+							}
+							if (e.key === 'Enter') {
+								const selected = hqResults[hqSearchActiveIndex];
+								if (selected) {
+									e.preventDefault();
+									focusHqOnMap(selected);
+								}
+							}
+						}}
+					/>
+
+					{#if hqSearchOpen && hqResults.length > 0}
+						<div
+							class="absolute z-[1200] mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-background shadow-lg"
+							role="listbox"
+							aria-label="Hasil pencarian satwil"
+							tabindex="-1"
+							onmousedown={(e) => e.preventDefault()}
+						>
+							{#each hqResults as r, idx (r.id)}
+								<button
+									type="button"
+									class="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60 {idx === hqSearchActiveIndex ? 'bg-muted/60' : ''}"
+									onclick={() => focusHqOnMap(r)}
+								>
+									<span class="mt-0.5 inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+										{r.tipe}
+									</span>
+									<span class="min-w-0">
+										<span class="block truncate font-medium text-foreground">{r.nama}</span>
+										<span class="block truncate text-xs text-muted-foreground">
+											{r.lat.toFixed(4)}, {r.lng.toFixed(4)}
+										</span>
+									</span>
+								</button>
+							{/each}
+						</div>
+					{:else if hqSearchOpen && normalizeHqQuery(hqSearch)}
+						<div class="absolute z-[1200] mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground shadow-lg">
+							Tidak ada hasil.
+						</div>
+					{/if}
+				</div>
+			{/if}
 			{#if isPolsek}
 				<label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium">
 					<input type="checkbox" bind:checked={showPatrolMandatory} class="rounded border-input" />
@@ -570,28 +694,8 @@
 		</div>
 	</div>
 
-	<div class="flex flex-wrap gap-2">
-		{#if isPolsek}
-			<div class="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs">
-				<span class="h-2.5 w-2.5 rounded-full bg-red-600"></span>
-				Resmi POLRES / referensi
-			</div>
-			<div class="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs">
-				<span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>
-				Temuan lapangan POLSEK
-			</div>
-		{:else}
-			{#each crimeLegendHq as [type, color] (type)}
-				<div class="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs">
-					<span class="h-2.5 w-2.5 rounded-full" style="background:{color}"></span>
-					{type}
-				</div>
-			{/each}
-		{/if}
-	</div>
-
-	<div class="grid gap-4 lg:grid-cols-3">
-		<div class="relative z-0 min-h-0 min-w-0 lg:col-span-2">
+	<div class="grid gap-4 lg:grid-cols-12">
+		<div class="relative z-0 min-h-0 min-w-0 lg:col-span-12">
 			<div
 				bind:this={mapShell}
 				class="peta-map-shell relative overflow-hidden rounded-xl border border-border bg-background shadow-sm"
@@ -622,7 +726,7 @@
 			</div>
 		</div>
 
-		<div class="relative z-10 min-w-0 space-y-4 bg-background">
+		<div class="relative z-10 min-w-0 space-y-4 bg-background lg:col-span-12">
 			{#if showForm && data.canEdit}
 				<div class="rounded-xl border border-border bg-card p-4 shadow-sm">
 					<h3 class="mb-3 text-sm font-semibold text-foreground">Tambah Titik Rawan (POLRES)</h3>
@@ -1004,45 +1108,55 @@
 				</div>
 			{/if}
 
-			<div class="rounded-xl border border-border bg-card shadow-sm">
-				<div class="border-b border-border px-4 py-3">
-					<h3 class="text-sm font-semibold text-foreground">Daftar Titik</h3>
-				</div>
-				<div class="max-h-[40vh] divide-y divide-border overflow-y-auto">
-					{#each data.points as pt}
-						<div class="px-4 py-3">
-							<div class="flex items-start justify-between gap-2">
-								<div>
-									<div class="flex flex-wrap items-center gap-2">
-										<span
-											class="inline-flex h-5 items-center rounded-full px-2 text-[10px] font-semibold text-white"
-											style="background:{markerColorForPoint(pt)}"
-										>
-											{pt.jenisKejahatan}
+		</div>
+	</div>
+
+	<div class="rounded-xl border border-border bg-card shadow-sm">
+		<div class="border-b border-border px-4 py-3">
+			<h3 class="text-sm font-semibold text-foreground">Daftar Titik</h3>
+		</div>
+		<div class="max-h-[55vh] overflow-y-auto p-4">
+			<div class="grid gap-3 md:grid-cols-2">
+				{#each data.points as pt (pt.id)}
+					<div class="rounded-lg border border-border bg-background p-3">
+						<div class="flex items-start justify-between gap-2">
+							<div class="min-w-0">
+								<div class="flex flex-wrap items-center gap-2">
+									<span
+										class="inline-flex h-5 items-center rounded-full px-2 text-[10px] font-semibold text-white"
+										style="background:{markerColorForPoint(pt)}"
+									>
+										{pt.jenisKejahatan}
+									</span>
+									<span class="text-xs text-muted-foreground">×{pt.frekuensi}</span>
+									<span class="text-[10px] font-medium text-muted-foreground">
+										Radius: {pt.radiusM ?? 500} m
+									</span>
+									{#if pt.origin === 'polda'}
+										<span class="text-[10px] font-medium text-violet-700">POLDA</span>
+									{:else if isPolsek}
+										<span class="text-[10px] font-medium {pt.origin === 'polsek' ? 'text-amber-700' : 'text-red-700'}">
+											{pt.origin === 'polsek' ? 'POLSEK' : 'POLRES'}
 										</span>
-										<span class="text-xs text-muted-foreground">×{pt.frekuensi}</span>
-										<span class="text-[10px] font-medium text-muted-foreground">
-											Radius: {pt.radiusM ?? 500} m
-										</span>
-										{#if pt.origin === 'polda'}
-											<span class="text-[10px] font-medium text-violet-700">POLDA</span>
-										{:else if isPolsek}
-											<span class="text-[10px] font-medium {pt.origin === 'polsek' ? 'text-amber-700' : 'text-red-700'}">
-												{pt.origin === 'polsek' ? 'POLSEK' : 'POLRES'}
-											</span>
-										{/if}
-									</div>
-									{#if pt.keterangan}
-										<p class="mt-1 text-xs text-muted-foreground">{pt.keterangan}</p>
 									{/if}
-									<p class="mt-0.5 text-[10px] text-muted-foreground">
-										{pt.lat}, {pt.lng} &middot; {pt.polresNama}
-									</p>
 								</div>
+								{#if pt.keterangan}
+									<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{pt.keterangan}</p>
+								{/if}
+								<p class="mt-0.5 text-[10px] text-muted-foreground">
+									{pt.lat}, {pt.lng} &middot; {pt.polresNama}
+								</p>
+							</div>
+							<div class="flex shrink-0 items-center gap-1">
 								{#if data.canEdit}
 									<form method="POST" action="?/delete" use:enhance>
 										<input type="hidden" name="id" value={pt.id} />
-										<button type="submit" class="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Hapus titik">
+										<button
+											type="submit"
+											class="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+											aria-label="Hapus titik"
+											title="Hapus titik"
+										>
 											<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 												<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 											</svg>
@@ -1052,7 +1166,12 @@
 								{#if isPolsek && pt.origin === 'polsek' && data.canEditPolsek}
 									<form method="POST" action="?/deletePolsek" use:enhance>
 										<input type="hidden" name="id" value={pt.id} />
-										<button type="submit" class="rounded p-1 text-amber-800 hover:bg-amber-100" aria-label="Hapus temuan">
+										<button
+											type="submit"
+											class="rounded p-1 text-amber-800 hover:bg-amber-100"
+											aria-label="Hapus temuan"
+											title="Hapus temuan"
+										>
 											<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 												<path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 											</svg>
@@ -1061,12 +1180,12 @@
 								{/if}
 							</div>
 						</div>
-					{:else}
-						<div class="px-4 py-8 text-center text-sm text-muted-foreground">
-							Belum ada titik.
-						</div>
-					{/each}
-				</div>
+					</div>
+				{:else}
+					<div class="rounded-lg border border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground md:col-span-2">
+						Belum ada titik.
+					</div>
+				{/each}
 			</div>
 		</div>
 	</div>

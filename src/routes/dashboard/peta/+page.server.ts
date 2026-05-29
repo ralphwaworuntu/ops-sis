@@ -26,7 +26,15 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 		redirect(302, '/login');
 	}
 
-	if (user.role === 'POLSEK' && user.polresId != null && user.unitId != null) {
+	if (
+		(user.role === 'KATIM PATROLI' ||
+			user.role === 'ADMIN POLSEK' ||
+			user.role === 'KAPOLSEK' ||
+			user.role === 'WAKAPOLSEK' ||
+			user.role === 'KANIT SAMAPTA') &&
+		user.polresId != null &&
+		user.unitId != null
+	) {
 		const points = db
 			.select(pointSelect)
 			.from(vulnerabilityPoints)
@@ -94,7 +102,12 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 				polresFilter ? basePoints.where(eq(vulnerabilityPoints.polresId, polresFilter)) : basePoints
 			).all();
 		}
-		if (user.role === 'POLRES') {
+		if (
+			user.role === 'KABAG OPS' ||
+			user.role === 'ADMIN POLRES' ||
+			user.role === 'KAPOLRES' ||
+			user.role === 'WAKAPOLRES'
+		) {
 			return basePoints.where(eq(vulnerabilityPoints.polresId, user.unitId!)).all();
 		}
 		return [];
@@ -131,7 +144,10 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 					.all();
 
 	const intelNotes =
-		user.role === 'POLRES' && user.unitId != null
+		(user.role === 'ADMIN POLRES' ||
+			user.role === 'KABAG OPS' ||
+			user.role === 'KAPOLRES' ||
+			user.role === 'WAKAPOLRES') && user.unitId != null
 			? db
 					.select({
 						id: polsekIntelNotes.id,
@@ -150,7 +166,11 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	return {
 		viewMode: 'hq' as const,
 		points,
-		canEdit: user.role === 'POLRES',
+		canEdit:
+			user.role === 'KABAG OPS' ||
+			user.role === 'ADMIN POLRES' ||
+			user.role === 'KAPOLRES' ||
+			user.role === 'WAKAPOLRES',
 		canEditPolsek: false,
 		polresList,
 		polresFilter,
@@ -162,7 +182,13 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 
 export const actions: Actions = {
 	add: async ({ request, locals }) => {
-		if (!locals.user || locals.user.role !== 'POLRES') {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'KABAG OPS' &&
+				locals.user.role !== 'ADMIN POLRES' &&
+				locals.user.role !== 'KAPOLRES' &&
+				locals.user.role !== 'WAKAPOLRES')
+		) {
 			return fail(403, { error: 'Hanya POLRES yang dapat menambah titik rawan resmi.' });
 		}
 
@@ -219,7 +245,16 @@ export const actions: Actions = {
 	},
 
 	addPolsek: async ({ request, locals }) => {
-		if (!locals.user || locals.user.role !== 'POLSEK' || !locals.user.polresId || !locals.user.unitId) {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'KATIM PATROLI' &&
+				locals.user.role !== 'ADMIN POLSEK' &&
+				locals.user.role !== 'KAPOLSEK' &&
+				locals.user.role !== 'WAKAPOLSEK' &&
+				locals.user.role !== 'KANIT SAMAPTA') ||
+			!locals.user.polresId ||
+			!locals.user.unitId
+		) {
 			return fail(403, { error: 'Hanya POLSEK yang dapat menambah temuan lapangan.' });
 		}
 
@@ -251,9 +286,15 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	delete: async (event) => {
+		delete: async (event) => {
 		const { request, locals, getClientAddress } = event;
-		if (!locals.user || locals.user.role !== 'POLRES') {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'KABAG OPS' &&
+				locals.user.role !== 'ADMIN POLRES' &&
+				locals.user.role !== 'KAPOLRES' &&
+				locals.user.role !== 'WAKAPOLRES')
+		) {
 			return fail(403, { error: 'Unauthorized' });
 		}
 
@@ -276,7 +317,16 @@ export const actions: Actions = {
 	},
 
 	addIntel: async ({ request, locals }) => {
-		if (!locals.user || locals.user.role !== 'POLSEK' || !locals.user.polresId || !locals.user.unitId) {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'KATIM PATROLI' &&
+				locals.user.role !== 'ADMIN POLSEK' &&
+				locals.user.role !== 'KAPOLSEK' &&
+				locals.user.role !== 'WAKAPOLSEK' &&
+				locals.user.role !== 'KANIT SAMAPTA') ||
+			!locals.user.polresId ||
+			!locals.user.unitId
+		) {
 			return fail(403, { error: 'Hanya POLSEK yang dapat menambah intel sementara.' });
 		}
 		const data = await request.formData();
@@ -301,7 +351,15 @@ export const actions: Actions = {
 
 	deletePolsek: async (event) => {
 		const { request, locals, getClientAddress } = event;
-		if (!locals.user || locals.user.role !== 'POLSEK' || !locals.user.unitId) {
+		if (
+			!locals.user ||
+			(locals.user.role !== 'KATIM PATROLI' &&
+				locals.user.role !== 'ADMIN POLSEK' &&
+				locals.user.role !== 'KAPOLSEK' &&
+				locals.user.role !== 'WAKAPOLSEK' &&
+				locals.user.role !== 'KANIT SAMAPTA') ||
+			!locals.user.unitId
+		) {
 			return fail(403, { error: 'Unauthorized' });
 		}
 		const data = await request.formData();

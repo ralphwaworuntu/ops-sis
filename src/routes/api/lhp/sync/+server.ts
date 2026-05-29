@@ -37,7 +37,14 @@ function stableFallbackIdempotencyKey(deviceId: string, body: Body): string {
 }
 
 export const POST: RequestHandler = async (event) => {
-	if (!event.locals.user || event.locals.user.role !== 'POLSEK') {
+	if (
+		!event.locals.user ||
+		(event.locals.user.role !== 'KATIM PATROLI' &&
+			event.locals.user.role !== 'ADMIN POLSEK' &&
+			event.locals.user.role !== 'KAPOLSEK' &&
+			event.locals.user.role !== 'WAKAPOLSEK' &&
+			event.locals.user.role !== 'KANIT SAMAPTA')
+	) {
 		error(403, 'Unauthorized');
 	}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
 
 	let { data, form } = $props();
 
@@ -119,6 +120,36 @@
 			</span>
 		</div>
 
+		{#if ['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES', 'POLDA', 'KARO OPS'].includes(data.user?.role ?? '')}
+			<div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+				<form
+					method="POST"
+					action="?/delete"
+					use:enhance={() => {
+						loading = 'delete';
+						return async ({ result, update }: { result: { type: string }; update: () => Promise<void> }) => {
+							await update();
+							loading = '';
+							if (result.type === 'success') {
+								await goto('/dashboard/rengiat');
+							}
+						};
+					}}
+					onsubmit={(e) => {
+						if (!confirm('Hapus Rengiat ini? Semua LHP/field giat terkait juga akan dihapus.')) e.preventDefault();
+					}}
+				>
+					<button
+						type="submit"
+						disabled={loading === 'delete'}
+						class="inline-flex h-10 items-center justify-center rounded-lg bg-destructive px-4 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+					>
+						{loading === 'delete' ? 'Menghapus…' : 'Hapus Rengiat'}
+					</button>
+				</form>
+			</div>
+		{/if}
+
 		<!-- Workflow Progress -->
 		{#if r.status !== 'Rejected'}
 			<div class="mt-5 flex items-center gap-1">
@@ -160,7 +191,7 @@
 				<p class="whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">{r.deskripsi}</p>
 			</div>
 
-			{#if data.user?.role === 'POLRES' && r.status === 'Draft'}
+			{#if ['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES'].includes(data.user?.role ?? '') && r.status === 'Draft'}
 				<div class="rounded-xl border border-border bg-card p-5 shadow-sm">
 					<h2 class="mb-3 text-sm font-semibold text-foreground">Target plotting</h2>
 					<form method="POST" action="?/updateDraftMeta" use:enhance={enhanceAction('draftmeta')} class="space-y-3">
@@ -323,7 +354,7 @@
 				<h3 class="mb-3 text-sm font-semibold text-foreground">Aksi</h3>
 				<div class="space-y-2">
 					<!-- POLRES: Submit for review -->
-					{#if data.user?.role === 'POLRES' && r.status === 'Draft'}
+					{#if ['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES'].includes(data.user?.role ?? '') && r.status === 'Draft'}
 						<form method="POST" action="?/submit" use:enhance={enhanceAction('submit')}>
 							<button
 								type="submit"
@@ -336,7 +367,7 @@
 					{/if}
 
 					<!-- AI Analyze -->
-					{#if ['POLRES', 'POLDA'].includes(data.user?.role ?? '') && ['Draft', 'PendingReview'].includes(r.status)}
+					{#if ['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES', 'POLDA'].includes(data.user?.role ?? '') && ['Draft', 'PendingReview'].includes(r.status)}
 						<form method="POST" action="?/analyze" use:enhance={enhanceAction('analyze')}>
 							<button
 								type="submit"

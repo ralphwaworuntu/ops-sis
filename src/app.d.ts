@@ -7,7 +7,18 @@ declare global {
 				nama: string;
 				nrp: string;
 				pangkat: string;
-				role: 'POLSEK' | 'POLRES' | 'POLDA' | 'KARO OPS';
+				role:
+					| 'KATIM PATROLI'
+					| 'ADMIN POLSEK'
+					| 'KAPOLSEK'
+					| 'WAKAPOLSEK'
+					| 'KANIT SAMAPTA'
+					| 'KABAG OPS'
+					| 'ADMIN POLRES'
+					| 'KAPOLRES'
+					| 'WAKAPOLRES'
+					| 'POLDA'
+					| 'KARO OPS';
 				unitId: number | null;
 				unitNama: string | null;
 				polresId: number | null;

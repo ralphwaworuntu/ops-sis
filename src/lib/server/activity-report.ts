@@ -29,7 +29,14 @@ export async function submitPolsekActivityReport(
 	formData: FormData,
 	event: Pick<RequestEvent, 'getClientAddress' | 'request'>
 ): Promise<SubmitReportResult> {
-	if (!locals.user || locals.user.role !== 'POLSEK') {
+	if (
+		!locals.user ||
+		(locals.user.role !== 'KATIM PATROLI' &&
+			locals.user.role !== 'ADMIN POLSEK' &&
+			locals.user.role !== 'KAPOLSEK' &&
+			locals.user.role !== 'WAKAPOLSEK' &&
+			locals.user.role !== 'KANIT SAMAPTA')
+	) {
 		return fail(403, { error: 'Hanya POLSEK yang dapat melapor.' });
 	}
 

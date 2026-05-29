@@ -1,8 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { rengiat, units, users, vulnerabilityPoints } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { rengiat, units, users, vulnerabilityPoints, activityReports, fieldGiatSessions } from '$lib/server/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { analyzeRengiat, generateTacticalPlan } from '$lib/server/ai';
 import { sseBroadcaster } from '$lib/server/sse';
 import { auditFromRequest } from '$lib/server/audit';
@@ -63,8 +63,62 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 };
 
 export const actions: Actions = {
+	delete: async (event) => {
+		const { params, locals, request, getClientAddress } = event;
+		if (
+			!locals.user ||
+			!['ADMIN POLRES', 'KABAG OPS', 'KAPOLRES', 'WAKAPOLRES', 'POLDA', 'KARO OPS'].includes(
+				locals.user.role
+			)
+		) {
+			return fail(403, { error: 'Unauthorized' });
+		}
+		const id = parseInt(params.id);
+		if (isNaN(id)) return fail(400, { error: 'ID tidak valid.' });
+
+		const row = db.select().from(rengiat).where(eq(rengiat.id, id)).get();
+		if (!row) return fail(404, { error: 'Rengiat tidak ditemukan.' });
+
+		// Scope check
+		if (
+			locals.user.role === 'ADMIN POLRES' ||
+			locals.user.role === 'KABAG OPS' ||
+			locals.user.role === 'KAPOLRES' ||
+			locals.user.role === 'WAKAPOLRES'
+		) {
+			if (row.polresId !== locals.user.unitId) return fail(403, { error: 'Tidak diizinkan.' });
+		} else if (locals.user.role === 'POLDA') {
+			const polresRow = db.select().from(units).where(eq(units.id, row.polresId)).get();
+			if (!polresRow || polresRow.tipe !== 'POLRES' || polresRow.parentId !== locals.user.unitId) {
+				return fail(403, { error: 'Tidak diizinkan.' });
+			}
+		}
+
+		// Safety: delete children first to avoid FK constraint errors.
+		db.delete(activityReports).where(eq(activityReports.rengiatId, id)).run();
+		db.delete(fieldGiatSessions).where(eq(fieldGiatSessions.rengiatId, id)).run();
+
+		db.delete(rengiat).where(eq(rengiat.id, id)).run();
+
+		auditFromRequest(locals.user.id, request, getClientAddress, {
+			action: 'RENGIAT_DELETE',
+			entityType: 'rengiat',
+			entityId: id,
+			detail: { polresId: row.polresId, status: row.status }
+		});
+
+		return { success: true };
+	},
+
 	updateDraftMeta: async ({ request, params, locals }) => {
-		if (!locals.user || locals.user.role !== 'POLRES') return fail(403, { error: 'Unauthorized' });
+		if (
+			!locals.user ||
+			(locals.user.role !== 'ADMIN POLRES' &&
+				locals.user.role !== 'KABAG OPS' &&
+				locals.user.role !== 'KAPOLRES' &&
+				locals.user.role !== 'WAKAPOLRES')
+		)
+			return fail(403, { error: 'Unauthorized' });
 		const id = parseInt(params.id);
 		const item = db.select().from(rengiat).where(eq(rengiat.id, id)).get();
 		if (!item || item.status !== 'Draft' || item.polresId !== locals.user.unitId) {
@@ -95,7 +149,14 @@ export const actions: Actions = {
 
 	submit: async (event) => {
 		const { params, locals, request, getClientAddress } = event;
-		if (!locals.user || locals.user.role !== 'POLRES') return fail(403, { error: 'Unauthorized' });
+		if (
+			!locals.user ||
+			(locals.user.role !== 'ADMIN POLRES' &&
+				locals.user.role !== 'KABAG OPS' &&
+				locals.user.role !== 'KAPOLRES' &&
+				locals.user.role !== 'WAKAPOLRES')
+		)
+			return fail(403, { error: 'Unauthorized' });
 		const id = parseInt(params.id);
 		const row = db.select().from(rengiat).where(eq(rengiat.id, id)).get();
 		if (!row) return fail(404, { error: 'Rengiat tidak ditemukan.' });
@@ -285,7 +346,17 @@ export const actions: Actions = {
 				status: 'Approved',
 				message:
 					'Rengiat disetujui (ACC KARO OPS) — siap dilaksanakan; input LHP via menu Giat Saya.',
-				notifyRoles: ['POLRES', 'POLSEK'],
+				notifyRoles: [
+					'ADMIN POLRES',
+					'KABAG OPS',
+					'KAPOLRES',
+					'WAKAPOLRES',
+					'ADMIN POLSEK',
+					'KATIM PATROLI',
+					'KAPOLSEK',
+					'WAKAPOLSEK',
+					'KANIT SAMAPTA'
+				],
 				polresId: row?.polresId
 			}
 		});
@@ -321,7 +392,17 @@ export const actions: Actions = {
 				id,
 				status: 'Rejected',
 				message: 'Rengiat ditolak — periksa catatan di detail Rengiat.',
-				notifyRoles: ['POLRES', 'POLSEK'],
+				notifyRoles: [
+					'ADMIN POLRES',
+					'KABAG OPS',
+					'KAPOLRES',
+					'WAKAPOLRES',
+					'ADMIN POLSEK',
+					'KATIM PATROLI',
+					'KAPOLSEK',
+					'WAKAPOLSEK',
+					'KANIT SAMAPTA'
+				],
 				polresId: row?.polresId
 			}
 		});

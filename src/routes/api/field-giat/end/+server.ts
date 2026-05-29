@@ -4,7 +4,14 @@ import { endFieldGiatSessionForUser } from '$lib/server/field-giat';
 
 export const POST: RequestHandler = async (event) => {
 	const u = event.locals.user;
-	if (!u || u.role !== 'POLSEK') {
+	if (
+		!u ||
+		(u.role !== 'KATIM PATROLI' &&
+			u.role !== 'ADMIN POLSEK' &&
+			u.role !== 'KAPOLSEK' &&
+			u.role !== 'WAKAPOLSEK' &&
+			u.role !== 'KANIT SAMAPTA')
+	) {
 		error(403, 'Unauthorized');
 	}
 	let body: { rengiat_id?: number; end_lat?: number; end_lng?: number } = {};

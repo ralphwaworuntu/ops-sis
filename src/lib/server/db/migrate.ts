@@ -46,11 +46,60 @@ export function runSqliteMigrations(sqlite: Database.Database) {
 		}
 	}
 
+	// Pastikan CHECK constraint users.role mencakup role terbaru.
+	// SQLite tidak mendukung ALTER CHECK; jadi rebuild tabel (best-effort).
+	try {
+		const cols = sqlite.prepare(`PRAGMA table_info('users')`).all() as Array<{ name: string }>;
+		const hasNrp = cols.some((c) => c.name === 'nrp');
+		if (cols.length > 0) {
+			// Migrasi role lama → role baru (agar tidak gagal saat rebuild CHECK).
+			try {
+				sqlite.exec(`
+					UPDATE users SET role='ADMIN POLRES' WHERE role='POLRES';
+					UPDATE users SET role='ADMIN POLSEK' WHERE role='POLSEK';
+				`);
+			} catch {
+				// ignore
+			}
+			sqlite.exec(`
+				BEGIN;
+				CREATE TABLE IF NOT EXISTS users__new (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					username TEXT NOT NULL UNIQUE,
+					password_hash TEXT NOT NULL,
+					nama TEXT NOT NULL,
+					${hasNrp ? "nrp TEXT NOT NULL DEFAULT '' ," : ""}
+					pangkat TEXT NOT NULL,
+					role TEXT NOT NULL CHECK(role IN (
+						'KATIM PATROLI','ADMIN POLSEK','KAPOLSEK','WAKAPOLSEK','KANIT SAMAPTA',
+						'KABAG OPS','ADMIN POLRES','KAPOLRES','WAKAPOLRES',
+						'POLDA','KARO OPS'
+					)),
+					unit_id INTEGER REFERENCES units(id),
+					created_at TEXT NOT NULL
+				);
+				INSERT INTO users__new (id, username, password_hash, nama, ${hasNrp ? "nrp," : ""} pangkat, role, unit_id, created_at)
+				SELECT id, username, password_hash, nama, ${hasNrp ? "nrp," : ""} pangkat, role, unit_id, created_at
+				FROM users;
+				DROP TABLE users;
+				ALTER TABLE users__new RENAME TO users;
+				COMMIT;
+			`);
+		}
+	} catch {
+		// best-effort
+	}
+
 	try {
 		sqlite.exec(`
 			CREATE TABLE IF NOT EXISTS audit_logs (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				user_id INTEGER REFERENCES users(id),
+				user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+				actor_username TEXT,
+				actor_nama TEXT,
+				actor_role TEXT,
+				actor_unit_id INTEGER,
+				actor_unit_nama TEXT,
 				action TEXT NOT NULL,
 				entity_type TEXT,
 				entity_id INTEGER,
@@ -64,6 +113,69 @@ export function runSqliteMigrations(sqlite: Database.Database) {
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? e.message : String(e);
 		if (!msg.includes('already exists')) throw e;
+	}
+
+	// Tambah kolom snapshot actor untuk audit log (DB lama).
+	const auditColumnStatements = [
+		'ALTER TABLE audit_logs ADD COLUMN actor_username TEXT',
+		'ALTER TABLE audit_logs ADD COLUMN actor_nama TEXT',
+		'ALTER TABLE audit_logs ADD COLUMN actor_role TEXT',
+		'ALTER TABLE audit_logs ADD COLUMN actor_unit_id INTEGER',
+		'ALTER TABLE audit_logs ADD COLUMN actor_unit_nama TEXT'
+	];
+	for (const sql of auditColumnStatements) {
+		try {
+			sqlite.exec(sql);
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (msg.includes('duplicate column')) continue;
+			if (msg.includes('no such table')) continue;
+			throw e;
+		}
+	}
+
+	// Pastikan FK audit_logs.user_id tidak menghalangi delete user:
+	// - Audit log tetap ada
+	// - user_id otomatis jadi NULL
+	try {
+		const fk = sqlite.prepare(`PRAGMA foreign_key_list('audit_logs')`).all() as Array<{
+			table: string;
+			from: string;
+			to: string;
+			on_delete?: string;
+		}>;
+		const userFk = fk.find((x) => x.table === 'users' && x.from === 'user_id');
+		const onDelete = (userFk?.on_delete ?? '').toUpperCase();
+		if (userFk && onDelete !== 'SET NULL') {
+			sqlite.exec(`
+				BEGIN;
+				CREATE TABLE IF NOT EXISTS audit_logs__new (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+					actor_username TEXT,
+					actor_nama TEXT,
+					actor_role TEXT,
+					actor_unit_id INTEGER,
+					actor_unit_nama TEXT,
+					action TEXT NOT NULL,
+					entity_type TEXT,
+					entity_id INTEGER,
+					detail_json TEXT,
+					ip TEXT NOT NULL,
+					user_agent TEXT,
+					device_id TEXT,
+					created_at TEXT NOT NULL
+				);
+				INSERT INTO audit_logs__new (id, user_id, actor_username, actor_nama, actor_role, actor_unit_id, actor_unit_nama, action, entity_type, entity_id, detail_json, ip, user_agent, device_id, created_at)
+				SELECT id, user_id, actor_username, actor_nama, actor_role, actor_unit_id, actor_unit_nama, action, entity_type, entity_id, detail_json, ip, user_agent, device_id, created_at
+				FROM audit_logs;
+				DROP TABLE audit_logs;
+				ALTER TABLE audit_logs__new RENAME TO audit_logs;
+				COMMIT;
+			`);
+		}
+	} catch {
+		// best-effort: jika gagal rebuild (mis. lock), jangan blok startup.
 	}
 
 	try {
